@@ -1,0 +1,33 @@
+# Fichiers de données volumineux
+*.zst
+*.jsonl
+!sample_data/*.jsonl
+
+# Résultats d'analyse
+analysis_results/
+analysis_results*/
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Fichiers temporaires
+*.tmp
+*.swp
+*~
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Fichiers PDF volumineux (optionnel - décommenter si nécessaire)
+# *.pdf

@@ -1,0 +1,317 @@
+# Projet Cyber : Malicious **Domain Name Abuse**
+
+[NoteBookLM](https://notebooklm.google.com/notebook/db9b0498-2efe-4af0-92d8-c2818821761a)
+
+## **Aging domain names: When Do Attackers Weaponize Newly Registered Domains?**
+
+**Idée clés :**
+
+- Comprendre les données
+- S’intéresser dans un premier temps aux domaines malicieux 😝
+- De même pour les domaines qui ont été compromis (ultérieurement)
+- Les domaines dont une partie est malveillante (ex : google.com/phishing)
+- Essayer d’identifier un domaine légitime qui a été racheté dans un but malveillant
+
+**A FAIRE :**
+
+- Parser les données
+- Regarder uptimes (infos sur whois et le DNS)
+- Regarder les noms de domaine qui ont NX DOMAIN
+    - Regarder si il est NX DOMAIN et voir si il le reste où si il y a un changement
+- Si un domaine de domaine est enregistré puis change de propriétaire dcp il vieillit
+
+**Pistes de recherche :**
+
+- Est-ce qu’un domaine malveillant est utilisé **immédiatement** après sa création ? Mesurer le délais
+- Quelle plus value à s’intéresser aux domaines légitimes qui sont corrompues ?
+- Délais entre l’enregistrement du nom de domaine et le moment où il est blacklisté
+- Voir l’évolution entre les années 2022 - 2025
+- Est-ce que les attaquants le laissent vieillir pour paraître plus légitime ?
+- Est-ce que le vieillissement dépend du type d’attaque ?
+- Y a-t-il des patterns selon les types d’attaques ?
+- Quels signaux indiquent qu’un domaine fiable a été détourné ?
+- Y a-t-il des ruptures dans les résolutions DNS ?
+- Le domaine apparaît-il dans des listes noires ?
+- Comment détecter un changement de propriétaire (WHOIS) ?
+- Est-ce que les domaines anciens sont plus prisés pour le spam ou le phishing ?
+- Comment repérer les “subresources malveillantes” (URL injections, hébergement non voulu)
+- Est-ce visible dans les données DNS ?
+
+NX_DOMAIN —> re-up ? 
+
+oui = legit 
+
+ptet faire des blocs de 6 mois pour comparer 
+
+Dans un premier temps on etudie le fait que ca passe de "no-error à nx-dmain et que ça ne repasse pas a nx-domain 
+
+et Uptimes et whois
+
+**IMPORTANT - GESTION MÉMOIRE :**
+- Les fichiers de données sont très volumineux (plusieurs GB compressés, 200GB+ décompressés)
+- TOUJOURS utiliser des approches en streaming/ligne par ligne pour traiter les données
+- JAMAIS charger tout un fichier en mémoire (même avec json.loads() sur tout le contenu)
+- Utiliser des générateurs, itertools, et traitements ligne par ligne
+- Pour l'analyse JSON : parser ligne par ligne avec json.loads() sur chaque ligne individuellement
+- Utiliser zstdcat pour les fichiers compressés en streaming plutôt que décompresser tout
+- Éviter les list comprehensions sur de grandes quantités de données (utiliser des générateurs)
+- Libérer la mémoire régulièrement avec gc.collect() lors de traitements par batch
+- Pour les tests : toujours limiter le nombre de lignes (--test-limit) avant de tester sur données complètes
+- Ne jamais faire de grep/sed/awk sur de très gros fichiers sans head/limits appropriés
+
+================================================================================
+DOCUMENTATION TECHNIQUE - SCRIPT analyze_domains.py
+================================================================================
+
+## STRUCTURE DES DONNÉES SOURCES
+
+### Répertoire racine
+/ssd/cyber/
+
+### Fichiers JSONL (années) - Stats générales
+Emplacements:
+  - 2022/, 2023/, 2024/, 2025/ : fichiers .jsonl par mois (01.jsonl, 02.jsonl, ...)
+  - __2023/, __2024/ : fichiers compressés .jsonl.zst
+
+Format JSONL (une ligne = un domaine):
+```json
+{
+  "rd": "domaine.com",
+  "fqdn": "domaine.com",
+  "url": "https://domaine.com/path",
+  "sid": "source_id",
+  "discovery_time": "2024-01-15T10:30:00" ou timestamp,
+  "metadata": {
+    "discovery_time": "2024-01-15T10:30:00",
+    "src": "source_name",
+    "trg": "target_name"
+  },
+  "whois_bd": {
+    "cd": "2023-12-01",  // Date de création du domaine
+    ...
+  },
+  "takedown": {
+    "uptime_dur": 720,  // Durée en heures
+    "takedown_reason": "content"|"dns"|"whois",
+    ...
+  },
+  "uptime": [  // Optionnel - rare dans JSONL
+    {
+      "dt": "2024-01-15T10:30:00",
+      "type": "dns",
+      "dns_status": "NOERROR"|"NXDOMAIN",
+      "arec": [...]
+    },
+    ...
+  ]
+}
+```
+
+### Fichiers Uptimes - Transitions DNS temporelles
+Emplacement: uptimes/*.json.zst ou uptimes/*.json
+
+Format JSONL (une ligne = un domaine avec historique complet):
+```json
+{
+  "rd": "domaine.com",
+  "fqdn": "domaine.com",
+  "url": "https://domaine.com/path",
+  "sid": "source_id",
+  "discovery_time": "2024-01-15T10:30:00",
+  "metadata": {...},
+  "whois_bd": {
+    "cd": "2023-12-01",
+    ...
+  },
+  "takedown": {...},
+  "uptime": [  // Array d'entrées temporelles ordonnées
+    {
+      "dt": "2024-01-15T10:30:00",
+      "type": "dns",
+      "dns_status": "NOERROR",
+      "arec": ["1.2.3.4"]
+    },
+    {
+      "dt": "2024-01-20T14:00:00",
+      "type": "dns",
+      "dns_status": "NXDOMAIN"
+    },
+    {
+      "dt": "2024-01-25T09:00:00",
+      "type": "whois",
+      "whois_status": "active"|"inactive"
+    },
+    ...
+  ]
+}
+```
+
+## OUTPUTS GÉNÉRÉS
+
+### Répertoire de sortie
+analysis_results/
+
+### Fichiers de données générés
+
+#### down_domains.jsonl
+Liste complète des domaines avec transition NOERROR → NXDOMAIN détectée.
+
+Format (une ligne JSON par domaine):
+```json
+{
+  "rd": "domaine.com",
+  "fqdn": "domaine.com",
+  "url": "https://domaine.com/path",
+  "sid": "source_id",
+  "discovery_time": "2024-01-15T10:30:00",
+  "dt": "2024-01-15T10:30:00",
+  "metadata": {...},
+  "transition": {
+    "transition_date": "2024-01-20T14:00:00",  // Date transition NOERROR→NXDOMAIN
+    "previous_date": "2024-01-15T10:30:00",
+    "previous_status": "NOERROR",
+    "new_status": "NXDOMAIN",
+    "remains_nxdomain": true,  // true = illégitime, false = légitime (re-up)
+    "year": "2024"
+  },
+  "whois_bd": {
+    "cd": "2023-12-01",  // Date création
+    ...
+  },
+  "takedown": {
+    "uptime_dur": 720,
+    "takedown_reason": "content"|"dns"|"whois",
+    ...
+  },
+  "dns_context": {
+    "before": [  // 5-10 entrées DNS avant transition
+      {"dt": "...", "status": "NOERROR", "arec": [...]},
+      ...
+    ],
+    "transition_index": 5,
+    "after": [  // 10-20 entrées DNS après transition
+      {"dt": "...", "status": "NXDOMAIN", "arec": []},
+      ...
+    ]
+  }
+}
+```
+
+### Graphiques générés (PNG, 300 DPI)
+
+#### creation_delays.png
+Distribution des délais entre création du domaine et première utilisation malveillante.
+- 4 sous-graphiques: histogramme global, box plot par année, distribution log, courbe cumulative
+
+#### temporal_evolution.png
+Évolution temporelle des métriques par année (2022-2025).
+- 4 sous-graphiques: domaines par année, transitions DNS par année, délais moyens, takedowns
+
+#### dns_transitions.png
+Analyse des transitions DNS NOERROR → NXDOMAIN.
+- 2 sous-graphiques: proportion permanentes vs temporaires, évolution par année
+
+#### takedown_durations.png
+Durées avant takedown.
+- 2 sous-graphiques: histogramme des durées, takedowns par raison (Top 10)
+
+#### year_comparison.png
+Comparaison détaillée par année.
+- 4 sous-graphiques: volume total, délais moyens, taux transitions permanentes, durées moyennes takedown
+
+#### takedown_duration_by_6months.png
+Durée entre achat et takedown par période de 6 mois (domaines illégitimes uniquement).
+- 4 sous-graphiques: moyenne/médiane par période, distribution (box plot), nombre par période, évolution médiane
+
+### Rapports textuels
+
+#### analysis_report.txt
+Rapport général d'analyse avec:
+- Résumé général (total domaines, par année)
+- Transitions DNS (total, permanentes, taux)
+- Délais création → utilisation (moyenne, médiane, min, max, écart-type)
+- Takedowns (total, durées, par raison)
+- Changements WHOIS
+- Sources et targets (Top 10)
+- Évolution temporelle
+
+#### takedown_duration_by_6months_summary.txt
+Résumé par période de 6 mois:
+- Tableau: Période | Nb domaines | Moyenne (j) | Médiane (j) | Q1 (j) | Q3 (j)
+- Statistiques globales
+
+## FONCTIONNALITÉS DU SCRIPT
+
+### 1. Traitement des données (streaming)
+- parse_jsonl_stream(): Lit fichiers JSONL ligne par ligne (support .zst via zstdcat)
+- parse_uptime_stream(): Lit fichiers uptimes (même format JSONL)
+- process_domain_record(): Traite enregistrements JSONL (stats générales)
+- process_uptime_record(): Traite enregistrements uptimes (transitions DNS temporelles)
+
+### 2. Détection transitions DNS
+- Détecte transitions NOERROR → NXDOMAIN dans historique uptime
+- Vérifie si transition permanente (reste NXDOMAIN) ou temporaire (re-up)
+- Export dans down_domains.jsonl avec contexte DNS
+
+### 3. Calculs de délais
+- Création → Utilisation: Délai entre whois_bd.cd et discovery_time
+- Achat → Takedown: Délai entre whois_bd.cd et transition.transition_date
+- Filtrage valeurs aberrantes (< 0 ou > 50 ans)
+
+### 4. Analyses temporelles
+- Groupement par année (extraction depuis dates)
+- Groupement par période 6 mois (YYYY-H1/H2)
+- Comparaisons inter-années
+
+### 5. Génération visualisations
+- Tous graphiques en 300 DPI, format PNG
+- Utilisation matplotlib avec backend Agg (non-interactif)
+- Libération mémoire après chaque graphique (gc.collect())
+
+## UTILISATION
+
+### Mode normal
+```bash
+python3 analyze_domains.py
+```
+Traite tous les fichiers disponibles, génère tous les graphiques et rapports.
+
+### Mode test (limite lignes)
+```bash
+python3 analyze_domains.py --test [--test-limit N]
+```
+- --test: Active mode test (limite par défaut: 200 lignes/fichier)
+- --test-limit N: Spécifie limite personnalisée
+
+### Mode DNS-only
+```bash
+python3 analyze_domains.py --dns-only
+```
+Ignore fichiers JSONL (années), traite seulement fichiers uptimes/ pour transitions DNS.
+
+## NOTES IMPORTANTES POUR L'IA
+
+### Structure des données
+- JSONL = une ligne JSON par enregistrement (pas de tableau global)
+- Fichiers compressés .zst lus via zstdcat en streaming
+- Dates: formats variés ('%Y-%m-%d', '%Y-%m-%dT%H:%M:%S', timestamps)
+
+### Filtrage domaines illégitimes
+- remains_nxdomain = true → Takedown illégitime (reste NXDOMAIN)
+- remains_nxdomain = false → Takedown légitime (re-up, redevient NOERROR)
+
+### Périodes 6 mois
+- Format: "YYYY-H1" (jan-juin) ou "YYYY-H2" (juil-déc)
+- Basé sur date de transition (takedown), pas date création
+
+### Optimisations mémoire
+- Toujours streaming ligne par ligne
+- Pas de chargement complet fichiers en mémoire
+- Libération mémoire périodique (gc.collect())
+- Stats agrégées seulement, pas données brutes
+
+### Dépendances
+- Requis: python3, zstd (pour zstdcat)
+- Optionnel: tqdm (barres progression), matplotlib/pandas/numpy (graphiques)
+
+================================================================================
