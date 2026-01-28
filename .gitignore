@@ -1,0 +1,50 @@
+# Fichiers de données volumineux (par défaut on ignore tout)
+*.zst
+*.jsonl
+
+# ... sauf les échantillons versionnés (uniquement en .zst)
+!sample_data/**/*.zst
+!sample_data/*.zst
+
+# Résultats d'analyse
+analysis_results/
+analysis_results*/
+analysis_output_v2/
+
+# Échantillons non compressés (on ne versionne que les .zst)
+sample_data/**/*.jsonl
+sample_data/uptimes/*.json
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Fichiers temporaires
+*.tmp
+*.swp
+*~
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Fichiers PDF volumineux (optionnel - décommenter si nécessaire)
+# *.pdf
+
+# Données complètes (non versionnées)
+2022/
+2023/
+2024/
+2025/
+__2023/
+__2024/
+__2025/

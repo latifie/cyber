@@ -1,0 +1,94 @@
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "url": { "type": "string" },
+      "privacy": { "type": "string" },
+      "sid": { "type": "string" },
+      "fref": { "type": "string" },
+      "discovery_time": { "type": "string", "format": "date-time" },
+      "dt": { "type": "string", "format": "date" },
+      "clk": { "type": "string", "format": "time" },
+      "rd": { "type": "string" },
+      "fqdn": { "type": "string" },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "src": { "type": "string" },
+          "trg": { "type": "string" },
+          "tld": { "type": "string" },
+          "tldindex": { "type": "number" },
+          "special_type": { "type": "null" },
+          "sid": { "type": "string" },
+          "indirect": { "type": "boolean" }
+        },
+        "required": ["src", "trg", "tld", "tldindex", "sid", "indirect"]
+      },
+      "uptime": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["whois", "dns", "content"] },
+            "dt": { "type": "string", "format": "date-time" },
+            "rd": { "type": "string" },
+            "cd": { "type": "string", "format": "date" },
+            "ed": { "type": "string", "format": "date" },
+            "ud": { "type": "string", "format": "date" },
+            "iana_id": { "type": "number" },
+            "collector_status": { "type": "number" },
+            "format": { "type": "string" },
+            "whois_status": { "type": "string" },
+            "whois_error": { "type": "number" },
+            "dns_status": { "type": "string" },
+            "dns_error": { "type": "number" },
+            "arec": { "type": "array", "items": { "type": "string" } },
+            "http_status": { "type": "number" },
+            "html_ssdeep": { "type": "null" },
+            "html_similarity": { "type": "null" },
+            "content_error": { "type": "number" },
+            "content_md5": { "type": "null" },
+            "html_title": { "type": "string" },
+            "err_msg": { "type": "null" },
+            "uptime_status": { "type": "string" }
+          },
+          "required": ["type", "dt"]
+        }
+      },
+      "whois_bd": {
+        "type": "object",
+        "properties": {
+          "rd": { "type": "string" },
+          "cd": { "type": "string", "format": "date" },
+          "ed": { "type": "string", "format": "date" },
+          "ud": { "type": "string", "format": "date" },
+          "dt": { "type": "string", "format": "date-time" },
+          "iana_id": { "type": "string" },
+          "rdap": { "type": "boolean" }
+        },
+        "required": ["rd", "cd", "ed", "ud", "dt", "iana_id", "rdap"]
+      },
+      "takedown": {
+        "type": "object",
+        "properties": {
+          "takedowns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" },
+                "dt": { "type": "string", "format": "date-time" },
+                "index": { "type": "number" }
+              },
+              "required": ["type", "dt", "index"]
+            }
+          },
+          "uptime_dur": { "type": "number" },
+          "takedown_reason": { "type": "string" }
+        },
+        "required": ["takedowns", "uptime_dur", "takedown_reason"]
+      }
+    },
+    "required": ["url", "privacy", "sid", "fref", "discovery_time", "dt", "clk", "rd", "fqdn", "metadata", "uptime", "whois_bd", "takedown"]
+  }
+}
