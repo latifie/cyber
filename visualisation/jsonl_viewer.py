@@ -322,7 +322,7 @@ def _html_content():
     #list { background: #16162a; border: 1px solid #333; border-radius: 8px; padding: 12px; max-height: 70vh; overflow-y: auto; }
     .line-block { margin-bottom: 16px; border-left: 3px solid #3a3a5c; padding-left: 10px; }
     .line-num { font-weight: 600; color: #7a7aaa; margin-bottom: 4px; }
-    .line-json { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: #c0c0d0; }
+    .line-json { font-family: ui-monospace, monospace; font-size: 12px; color: #c0c0d0; }
     .line-json .key { color: #8ab4f8; }
     .line-json .str { color: #a8e6a0; }
     .line-json .num { color: #f0b060; }
@@ -330,6 +330,21 @@ def _html_content():
     .line-json .null { color: #666; }
     .error { color: #f08080; }
     .loading { color: #888; }
+    .tree-root { margin: 0; padding: 0; list-style: none; }
+    .tree-node { margin: 0; padding: 0; }
+    .tree-row { display: flex; align-items: baseline; cursor: pointer; padding: 1px 0; min-height: 18px; }
+    .tree-row:hover { background: rgba(255,255,255,0.05); border-radius: 2px; }
+    .tree-toggle { display: inline-block; width: 16px; text-align: center; color: #7a7aaa; user-select: none; flex-shrink: 0; }
+    .tree-toggle.empty { visibility: hidden; }
+    .tree-key { color: #8ab4f8; margin-right: 6px; }
+    .tree-value { word-break: break-all; }
+    .tree-value.str { color: #a8e6a0; }
+    .tree-value.num { color: #f0b060; }
+    .tree-value.bool { color: #e080e0; }
+    .tree-value.null { color: #666; }
+    .tree-children { margin-left: 16px; border-left: 1px solid #333; padding-left: 8px; }
+    .tree-children.collapsed { display: none; }
+    .tree-preview { color: #666; font-style: italic; }
   </style>
 </head>
 <body>
@@ -362,14 +377,72 @@ def _html_content():
       return d.innerHTML;
     }
 
-    function syntaxHighlight(obj) {
-      var j = JSON.stringify(obj, null, 2);
-      return escapeHtml(j)
-        .replace(/&quot;([^&]*)&quot;\s*:/g, '<span class="key">&quot;$1&quot;</span>:')
-        .replace(/:\s*&quot;([^&]*)&quot;/g, ': <span class="str">&quot;$1&quot;</span>')
-        .replace(/:\s*(\d+\.?\d*)/g, ': <span class="num">$1</span>')
-        .replace(/:\s*(true|false)/g, ': <span class="bool">$1</span>')
-        .replace(/:\s*null/g, ': <span class="null">null</span>');
+    function treeNodeHtml(key, value, depth) {
+      var keyPart = key === null ? '' : '<span class="tree-key">' + escapeHtml(JSON.stringify(key)) + ':</span> ';
+      var t = typeof value;
+      if (value === null) {
+        return '<div class="tree-row"><span class="tree-toggle empty"></span>' + keyPart + '<span class="tree-value null">null</span></div>';
+      }
+      if (t === 'boolean') {
+        return '<div class="tree-row"><span class="tree-toggle empty"></span>' + keyPart + '<span class="tree-value bool">' + value + '</span></div>';
+      }
+      if (t === 'number') {
+        return '<div class="tree-row"><span class="tree-toggle empty"></span>' + keyPart + '<span class="tree-value num">' + value + '</span></div>';
+      }
+      if (t === 'string') {
+        var s = value.length > 80 ? value.slice(0, 80) + '…' : value;
+        return '<div class="tree-row"><span class="tree-toggle empty"></span>' + keyPart + '<span class="tree-value str">' + escapeHtml(JSON.stringify(s)) + '</span></div>';
+      }
+      if (Array.isArray(value)) {
+        var len = value.length;
+        var preview = 'Array (' + len + ')';
+        var children = value.map(function(v, i) { return treeNodeHtml(i, v, depth + 1); }).join('');
+        var id = 'tree-' + Math.random().toString(36).slice(2);
+        return '<div class="tree-node">' +
+          '<div class="tree-row" data-toggle="' + id + '"><span class="tree-toggle">▶</span>' + keyPart + '<span class="tree-preview">' + preview + '</span></div>' +
+          '<div class="tree-children" id="' + id + '">' + children + '</div></div>';
+      }
+      if (t === 'object') {
+        var keys = Object.keys(value);
+        var preview = 'Object (' + keys.length + ')';
+        var children = keys.map(function(k) { return treeNodeHtml(k, value[k], depth + 1); }).join('');
+        var id = 'tree-' + Math.random().toString(36).slice(2);
+        return '<div class="tree-node">' +
+          '<div class="tree-row" data-toggle="' + id + '"><span class="tree-toggle">▶</span>' + keyPart + '<span class="tree-preview">' + preview + '</span></div>' +
+          '<div class="tree-children collapsed" id="' + id + '">' + children + '</div></div>';
+      }
+      return '<div class="tree-row"><span class="tree-toggle empty"></span>' + keyPart + '<span class="tree-value">' + escapeHtml(String(value)) + '</span></div>';
+    }
+
+    function buildTreeHtml(obj, rootId) {
+      rootId = rootId || ('root-' + Math.random().toString(36).slice(2));
+      if (obj === null || typeof obj !== 'object') {
+        return '<div class="tree-root">' + treeNodeHtml(null, obj, 0) + '</div>';
+      }
+      if (Array.isArray(obj)) {
+        var parts = obj.map(function(v, i) { return treeNodeHtml(i, v, 0); }).join('');
+        return '<div class="tree-root"><div class="tree-node">' +
+          '<div class="tree-row" data-toggle="' + rootId + '"><span class="tree-toggle">▼</span> <span class="tree-preview">Array (' + obj.length + ')</span></div>' +
+          '<div class="tree-children" id="' + rootId + '">' + parts + '</div></div></div>';
+      }
+      var keys = Object.keys(obj);
+      var parts = keys.map(function(k) { return treeNodeHtml(k, obj[k], 0); }).join('');
+      return '<div class="tree-root"><div class="tree-node">' +
+        '<div class="tree-row" data-toggle="' + rootId + '"><span class="tree-toggle">▼</span> <span class="tree-preview">Object (' + keys.length + ')</span></div>' +
+        '<div class="tree-children" id="' + rootId + '">' + parts + '</div></div></div>';
+    }
+
+    function attachTreeToggles(container) {
+      container.querySelectorAll('.tree-row[data-toggle]').forEach(function(row) {
+        row.onclick = function() {
+          var id = row.getAttribute('data-toggle');
+          var el = document.getElementById(id);
+          if (!el) return;
+          var toggle = row.querySelector('.tree-toggle');
+          el.classList.toggle('collapsed');
+          toggle.textContent = el.classList.contains('collapsed') ? '▶' : '▼';
+        };
+      });
     }
 
     function render(lines) {
@@ -378,10 +451,13 @@ def _html_content():
         var lineNum = lines[i][0] + 1;
         var obj = lines[i][1];
         var isErr = obj && obj._error;
-        var content = isErr ? '<span class="error">' + escapeHtml(obj._raw) + '</span>' : syntaxHighlight(obj);
+        var content = isErr ? '<span class="error">' + escapeHtml(obj._raw) + '</span>' : buildTreeHtml(obj);
         html += '<div class="line-block"><div class="line-num">Line ' + lineNum + '</div><div class="line-json">' + content + '</div></div>';
       }
       document.getElementById('list').innerHTML = html || '<div class="info">No lines in this range.</div>';
+      document.querySelectorAll('#list .line-block').forEach(function(block) {
+        attachTreeToggles(block);
+      });
     }
 
     function updateRangeLabel() {
