@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+"""
+Lightweight JSONL viewer for very large files (1GB–30GB).
+Uses a sparse index + mmap to avoid loading the file into RAM.
+Standard library only; single-file with embedded HTML/JS.
+"""
+
+import argparse
+import json
+import mmap
+import os
+import struct
+import urllib.parse
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+CHUNK_SIZE = 1000  # index every N lines
+IDX_MAGIC = b"JVL\x01"  # JSONL Viewer Index v1
+STRUCT_Q = "Q"  # unsigned long long
+SIZE_Q = 8
+MAX_LINES_PER_REQUEST = 200
+
+
+# ---------------------------------------------------------------------------
+# Index: build or load sparse offsets
+# ---------------------------------------------------------------------------
+
+class IndexManager:
+    """Build or load a sparse index of byte offsets (every CHUNK_SIZE lines)."""
+
+    def __init__(self, jsonl_path):
+        self.jsonl_path = os.path.abspath(jsonl_path)
+        self.idx_path = self.jsonl_path + ".idx"
+        self.total_lines = 0
+        self.offsets = []  # offset of line 0, CHUNK_SIZE, 2*CHUNK_SIZE, ...
+
+    def exists(self):
+        return os.path.isfile(self.idx_path)
+
+    def load(self):
+        """Load total_lines and offsets from .idx file. Returns True on success."""
+        try:
+            with open(self.idx_path, "rb") as f:
+                magic = f.read(4)
+                if magic != IDX_MAGIC:
+                    return False
+                self.total_lines = struct.unpack(STRUCT_Q, f.read(SIZE_Q))[0]
+                self.offsets = []
+                while True:
+                    b = f.read(SIZE_Q)
+                    if len(b) < SIZE_Q:
+                        break
+                    self.offsets.append(struct.unpack(STRUCT_Q, b)[0])
+            return True
+        except (OSError, struct.error):
+            return False
+
+    def build(self, progress_callback=None):
+        """Scan JSONL once and write .idx. progress_callback(line_count) optional."""
+        self.total_lines = 0
+        self.offsets = []
+        try:
+            with open(self.jsonl_path, "rb") as f:
+                while True:
+                    pos = f.tell()
+                    line = f.readline()
+                    if not line:
+                        break
+                    if self.total_lines % CHUNK_SIZE == 0:
+                        self.offsets.append(pos)
+                    self.total_lines += 1
+                    if progress_callback and self.total_lines % 100_000 == 0:
+                        progress_callback(self.total_lines)
+        except OSError as e:
+            raise RuntimeError(f"Cannot read JSONL file: {e}") from e
+
+        # last chunk boundary: ensure we have an offset past last line for range logic
+        with open(self.idx_path, "wb") as f:
+            f.write(IDX_MAGIC)
+            f.write(struct.pack(STRUCT_Q, self.total_lines))
+            for off in self.offsets:
+                f.write(struct.pack(STRUCT_Q, off))
+        return True
+
+    def get_offset_for_line(self, line_index):
+        """Return (byte_offset, lines_to_skip) to reach line_index.
+        line_index is 0-based. Skip (line_index % CHUNK_SIZE) lines from chunk start.
+        """
+        if line_index >= self.total_lines or line_index < 0:
+            return None, 0
+        chunk = line_index // CHUNK_SIZE
+        if chunk >= len(self.offsets):
+            return self.offsets[-1] if self.offsets else 0, line_index
+        base_offset = self.offsets[chunk]
+        skip = line_index - chunk * CHUNK_SIZE
+        return base_offset, skip
+
+
+# ---------------------------------------------------------------------------
+# Streamer: read lines via mmap using the sparse index
+# ---------------------------------------------------------------------------
+
+class JSONLStreamer:
+    """Read requested line range from JSONL using mmap and sparse index."""
+
+    def __init__(self, jsonl_path, index_manager):
+        self.jsonl_path = jsonl_path
+        self.index = index_manager
+        self._file = None
+        self._mm = None
+
+    def _ensure_mmap(self):
+        if self._mm is not None:
+            return
+        self._file = open(self.jsonl_path, "rb")
+        try:
+            size = os.path.getsize(self.jsonl_path)
+            self._mm = mmap.mmap(self._file.fileno(), size, access=mmap.ACCESS_READ)
+        except (OSError, OverflowError):
+            self._file.close()
+            self._file = None
+            raise RuntimeError("mmap failed (file too large or not supported)")
+
+    def close(self):
+        if self._mm is not None:
+            try:
+                self._mm.close()
+            except OSError:
+                pass
+            self._mm = None
+        if self._file is not None:
+            try:
+                self._file.close()
+            except OSError:
+                pass
+            self._file = None
+
+    def get_lines(self, start_line, count):
+        """
+        Return list of (line_index_0based, object) for lines [start_line, start_line+count).
+        object is parsed JSON or {"_raw": str, "_error": True} on parse error.
+        """
+        total = self.index.total_lines
+        if start_line >= total or count <= 0:
+            return []
+        count = min(count, total - start_line, MAX_LINES_PER_REQUEST)
+
+        base_offset, skip = self.index.get_offset_for_line(start_line)
+        self._ensure_mmap()
+
+        result = []
+        pos = base_offset
+        end = len(self._mm)
+        line_index = start_line - skip  # first line we will yield when skip is done
+        to_skip = skip
+        to_take = count
+
+        while pos < end and to_take > 0:
+            line_end = self._mm.find(b"\n", pos)
+            if line_end == -1:
+                line_end = end
+            else:
+                line_end += 1
+            line_slice = self._mm[pos:line_end]
+            if line_index >= start_line:
+                raw = line_slice.rstrip(b"\n\r").decode("utf-8", errors="replace")
+                try:
+                    obj = json.loads(raw) if raw.strip() else {}
+                except json.JSONDecodeError:
+                    obj = {"_raw": raw[:500], "_error": True}
+                result.append((line_index, obj))
+                to_take -= 1
+            else:
+                to_skip -= 1
+            line_index += 1
+            pos = line_end
+
+        return result
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+# ---------------------------------------------------------------------------
+# HTTP server: serve UI and /api/lines
+# ---------------------------------------------------------------------------
+
+def _html_content():
+    return r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JSONL Viewer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 12px; background: #1a1a2e; color: #eaeaea; min-height: 100vh; }
+    h1 { font-size: 1.25rem; margin: 0 0 12px 0; color: #a0a0c0; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .toolbar input, .toolbar button { padding: 6px 10px; border-radius: 6px; border: 1px solid #444; background: #252538; color: #eaeaea; }
+    .toolbar button { cursor: pointer; }
+    .toolbar button:hover { background: #353550; }
+    .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .info { color: #888; font-size: 0.9rem; margin-left: 8px; }
+    #list { background: #16162a; border: 1px solid #333; border-radius: 8px; padding: 12px; max-height: 70vh; overflow-y: auto; }
+    .line-block { margin-bottom: 16px; border-left: 3px solid #3a3a5c; padding-left: 10px; }
+    .line-num { font-weight: 600; color: #7a7aaa; margin-bottom: 4px; }
+    .line-json { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: #c0c0d0; }
+    .line-json .key { color: #8ab4f8; }
+    .line-json .str { color: #a8e6a0; }
+    .line-json .num { color: #f0b060; }
+    .line-json .bool { color: #e080e0; }
+    .line-json .null { color: #666; }
+    .error { color: #f08080; }
+    .loading { color: #888; }
+  </style>
+</head>
+<body>
+  <h1>JSONL Viewer</h1>
+  <div class="toolbar">
+    <button id="prev" type="button">Previous</button>
+    <button id="next" type="button">Next</button>
+    <span class="info">Lines <span id="range">-</span> of <span id="total">-</span></span>
+    <label>Jump to line <input id="jump" type="number" min="1" placeholder="1" style="width: 100px;"> <button id="go" type="button">Go</button></label>
+    <span id="status" class="info"></span>
+  </div>
+  <div id="list" class="loading">Loading…</div>
+
+  <script>
+    var pageSize = 50;
+    var totalLines = 0;
+    var currentStart = 0;
+
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function setLoading(loading) {
+      document.getElementById('list').className = loading ? 'loading' : '';
+      document.getElementById('prev').disabled = loading;
+      document.getElementById('next').disabled = loading;
+      document.getElementById('go').disabled = loading;
+    }
+
+    function escapeHtml(s) {
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function syntaxHighlight(obj) {
+      var j = JSON.stringify(obj, null, 2);
+      return escapeHtml(j)
+        .replace(/&quot;([^&]*)&quot;\s*:/g, '<span class="key">&quot;$1&quot;</span>:')
+        .replace(/:\s*&quot;([^&]*)&quot;/g, ': <span class="str">&quot;$1&quot;</span>')
+        .replace(/:\s*(\d+\.?\d*)/g, ': <span class="num">$1</span>')
+        .replace(/:\s*(true|false)/g, ': <span class="bool">$1</span>')
+        .replace(/:\s*null/g, ': <span class="null">null</span>');
+    }
+
+    function render(lines) {
+      var html = '';
+      for (var i = 0; i < lines.length; i++) {
+        var lineNum = lines[i][0] + 1;
+        var obj = lines[i][1];
+        var isErr = obj && obj._error;
+        var content = isErr ? '<span class="error">' + escapeHtml(obj._raw) + '</span>' : syntaxHighlight(obj);
+        html += '<div class="line-block"><div class="line-num">Line ' + lineNum + '</div><div class="line-json">' + content + '</div></div>';
+      }
+      document.getElementById('list').innerHTML = html || '<div class="info">No lines in this range.</div>';
+    }
+
+    function updateRangeLabel() {
+      var a = currentStart + 1;
+      var b = Math.min(currentStart + pageSize, totalLines);
+      document.getElementById('range').textContent = totalLines ? (a + '–' + b) : '-';
+      document.getElementById('total').textContent = totalLines;
+      document.getElementById('prev').disabled = currentStart <= 0;
+      document.getElementById('next').disabled = currentStart + pageSize >= totalLines;
+    }
+
+    function fetchLines() {
+      setLoading(true);
+      setStatus('Fetching…');
+      fetch('/api/lines?start=' + currentStart + '&count=' + pageSize)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          totalLines = data.total;
+          render(data.lines);
+          updateRangeLabel();
+          setStatus('');
+          setLoading(false);
+        })
+        .catch(function(e) {
+          setStatus('Error: ' + e.message);
+          document.getElementById('list').innerHTML = '<div class="error">Request failed.</div>';
+          setLoading(false);
+        });
+    }
+
+    document.getElementById('prev').onclick = function() {
+      currentStart = Math.max(0, currentStart - pageSize);
+      fetchLines();
+    };
+    document.getElementById('next').onclick = function() {
+      if (currentStart + pageSize < totalLines) { currentStart += pageSize; fetchLines(); }
+    };
+    document.getElementById('go').onclick = function() {
+      var n = parseInt(document.getElementById('jump').value, 10);
+      if (!isNaN(n) && n >= 1) {
+        currentStart = Math.min(n - 1, Math.max(0, totalLines - 1));
+        fetchLines();
+      }
+    };
+    document.getElementById('jump').onkeydown = function(e) {
+      if (e.key === 'Enter') document.getElementById('go').click();
+    };
+
+    fetchLines();
+  </script>
+</body>
+</html>"""
+
+
+class JSONLViewerHandler(BaseHTTPRequestHandler):
+    """Serve embedded HTML and /api/lines from the shared streamer."""
+
+    def log_message(self, format, *args):
+        pass  # quiet by default
+
+    def do_GET(self):
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        query = urllib.parse.parse_qs(parsed.query)
+
+        if path == "/" or path == "/index.html":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(_html_content().encode("utf-8"))
+            return
+
+        if path == "/api/lines":
+            try:
+                start = int(query.get("start", [0])[0])
+                count = int(query.get("count", [50])[0])
+            except (ValueError, IndexError):
+                start, count = 0, 50
+            start = max(0, start)
+            count = min(max(1, count), MAX_LINES_PER_REQUEST)
+
+            streamer = self.server.streamer
+            total = streamer.index.total_lines
+            lines_data = streamer.get_lines(start, count)
+            payload = {
+                "total": total,
+                "lines": [[idx, obj] for idx, obj in lines_data],
+            }
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        self.send_response(404)
+        self.end_headers()
+
+    def end_headers(self):
+        # Prevent default Server header if desired (optional)
+        super().end_headers()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="View large JSONL files in the browser (sparse index + mmap, low RAM)."
+    )
+    parser.add_argument(
+        "file",
+        type=str,
+        help="Path to the .jsonl file",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Port for the local web server (default: 8765)",
+    )
+    parser.add_argument(
+        "--rebuild-index",
+        action="store_true",
+        help="Force rebuild of the .idx file",
+    )
+    args = parser.parse_args()
+
+    jsonl_path = os.path.abspath(args.file)
+    if not os.path.isfile(jsonl_path):
+        print(f"Error: file not found: {jsonl_path}")
+        return 1
+
+    index_mgr = IndexManager(jsonl_path)
+    if not index_mgr.exists() or args.rebuild_index:
+        print("Building sparse index (one-time scan)...")
+        def progress(n):
+            print(f"  Indexed {n:,} lines...", end="\r")
+        index_mgr.build(progress_callback=progress)
+        print(f"  Done. Total lines: {index_mgr.total_lines:,}. Index saved to {index_mgr.idx_path}")
+    else:
+        if not index_mgr.load():
+            print("Error: invalid or corrupted .idx file. Use --rebuild-index to rebuild.")
+            return 1
+        print(f"Loaded index: {index_mgr.total_lines:,} lines.")
+
+    streamer = JSONLStreamer(jsonl_path, index_mgr)
+    try:
+        server = HTTPServer(("127.0.0.1", args.port), JSONLViewerHandler)
+        server.streamer = streamer
+        print(f"Open http://127.0.0.1:{args.port}/ in your browser.")
+        print("Press Ctrl+C to stop.")
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+    finally:
+        streamer.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
