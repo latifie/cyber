@@ -513,6 +513,14 @@ def main():
         print(f"Error: file not found: {file_path}")
         return 1
 
+    # Reject single-JSON files: this tool expects JSONL (one JSON object per line)
+    base = file_path.lower()
+    if base.endswith(".json") and not (base.endswith(".jsonl") or base.endswith(".jsonl.zst")):
+        print("Error: This tool expects JSONL format (one JSON object per line), not a single JSON document.")
+        print("  Use a file with extension .jsonl or .jsonl.zst.")
+        print("  If you have a .json file (single object or array), convert it to JSONL first (e.g. one object per line).")
+        return 1
+
     index_mgr = IndexManager(file_path)
     if not index_mgr.exists() or args.rebuild_index:
         kind = "zstd stream" if index_mgr.is_zst else "sparse index"
