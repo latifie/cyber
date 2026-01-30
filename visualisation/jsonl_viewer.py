@@ -2,6 +2,7 @@
 """
 Lightweight JSONL viewer for very large files (1GB–30GB).
 Uses a sparse index + mmap to avoid loading the file into RAM.
+Supports .jsonl and .jsonl.zst (via zstdcat; requires zstd on PATH).
 Standard library only; single-file with embedded HTML/JS.
 """
 
@@ -10,28 +11,38 @@ import json
 import mmap
 import os
 import struct
+import subprocess
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 CHUNK_SIZE = 1000  # index every N lines
-IDX_MAGIC = b"JVL\x01"  # JSONL Viewer Index v1
+IDX_MAGIC = b"JVL\x01"  # JSONL Viewer Index v1 (plain)
+IDX_MAGIC_ZST = b"JVL\x02"  # JSONL Viewer Index v2 (zstd: line count only)
 STRUCT_Q = "Q"  # unsigned long long
 SIZE_Q = 8
 MAX_LINES_PER_REQUEST = 200
+ZSTDCAT_CMD = ["zstdcat"]  # or "zstd -d -c" on some systems
 
 
 # ---------------------------------------------------------------------------
 # Index: build or load sparse offsets
 # ---------------------------------------------------------------------------
 
+def _is_zst_path(path):
+    return path.endswith(".zst")
+
+
 class IndexManager:
-    """Build or load a sparse index of byte offsets (every CHUNK_SIZE lines)."""
+    """Build or load a sparse index of byte offsets (every CHUNK_SIZE lines).
+    For .zst files, index stores only total_lines (no byte offsets); reading uses zstdcat.
+    """
 
     def __init__(self, jsonl_path):
         self.jsonl_path = os.path.abspath(jsonl_path)
         self.idx_path = self.jsonl_path + ".idx"
         self.total_lines = 0
         self.offsets = []  # offset of line 0, CHUNK_SIZE, 2*CHUNK_SIZE, ...
+        self.is_zst = _is_zst_path(self.jsonl_path)
 
     def exists(self):
         return os.path.isfile(self.idx_path)
@@ -41,7 +52,11 @@ class IndexManager:
         try:
             with open(self.idx_path, "rb") as f:
                 magic = f.read(4)
-                if magic != IDX_MAGIC:
+                if magic == IDX_MAGIC_ZST:
+                    self.is_zst = True
+                elif magic == IDX_MAGIC:
+                    self.is_zst = False
+                else:
                     return False
                 self.total_lines = struct.unpack(STRUCT_Q, f.read(SIZE_Q))[0]
                 self.offsets = []
@@ -55,9 +70,11 @@ class IndexManager:
             return False
 
     def build(self, progress_callback=None):
-        """Scan JSONL once and write .idx. progress_callback(line_count) optional."""
+        """Scan JSONL (or zstd stream) once and write .idx. progress_callback(line_count) optional."""
         self.total_lines = 0
         self.offsets = []
+        if self.is_zst:
+            return self._build_zst(progress_callback)
         try:
             with open(self.jsonl_path, "rb") as f:
                 while True:
@@ -73,7 +90,6 @@ class IndexManager:
         except OSError as e:
             raise RuntimeError(f"Cannot read JSONL file: {e}") from e
 
-        # last chunk boundary: ensure we have an offset past last line for range logic
         with open(self.idx_path, "wb") as f:
             f.write(IDX_MAGIC)
             f.write(struct.pack(STRUCT_Q, self.total_lines))
@@ -81,12 +97,43 @@ class IndexManager:
                 f.write(struct.pack(STRUCT_Q, off))
         return True
 
+    def _build_zst(self, progress_callback=None):
+        """Count lines via zstdcat (no byte offsets). Requires zstd on PATH."""
+        try:
+            proc = subprocess.Popen(
+                ZSTDCAT_CMD + [self.jsonl_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=65536,
+            )
+        except FileNotFoundError:
+            raise RuntimeError(
+                "zstd not found. Install zstd (e.g. apt install zstd) to view .zst files."
+            ) from None
+        try:
+            for line in proc.stdout:
+                self.total_lines += 1
+                if progress_callback and self.total_lines % 100_000 == 0:
+                    progress_callback(self.total_lines)
+        finally:
+            proc.wait()
+            if proc.returncode != 0:
+                err = (proc.stderr.read() or b"").decode("utf-8", errors="replace")
+                raise RuntimeError(f"zstdcat failed (code {proc.returncode}): {err}")
+        with open(self.idx_path, "wb") as f:
+            f.write(IDX_MAGIC_ZST)
+            f.write(struct.pack(STRUCT_Q, self.total_lines))
+            f.write(struct.pack(STRUCT_Q, 0))  # single dummy offset for zst
+        return True
+
     def get_offset_for_line(self, line_index):
         """Return (byte_offset, lines_to_skip) to reach line_index.
-        line_index is 0-based. Skip (line_index % CHUNK_SIZE) lines from chunk start.
+        For .zst, always (0, line_index) so reader streams from start and skips.
         """
         if line_index >= self.total_lines or line_index < 0:
             return None, 0
+        if self.is_zst:
+            return 0, line_index
         chunk = line_index // CHUNK_SIZE
         if chunk >= len(self.offsets):
             return self.offsets[-1] if self.offsets else 0, line_index
@@ -174,6 +221,74 @@ class JSONLStreamer:
             line_index += 1
             pos = line_end
 
+        return result
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+# ---------------------------------------------------------------------------
+# Zstd streamer: read lines via zstdcat (no mmap; stream and skip)
+# ---------------------------------------------------------------------------
+
+class ZstdJSONLStreamer:
+    """Read requested line range from .zst by streaming zstdcat and skipping to start."""
+
+    def __init__(self, zst_path, index_manager):
+        self.zst_path = zst_path
+        self.index = index_manager
+
+    def close(self):
+        pass
+
+    def get_lines(self, start_line, count):
+        """
+        Return list of (line_index_0based, object) for lines [start_line, start_line+count).
+        Streams zstdcat and skips first start_line lines (O(start_line) per request).
+        """
+        total = self.index.total_lines
+        if start_line >= total or count <= 0:
+            return []
+        count = min(count, total - start_line, MAX_LINES_PER_REQUEST)
+        try:
+            proc = subprocess.Popen(
+                ZSTDCAT_CMD + [self.zst_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=65536,
+            )
+        except FileNotFoundError:
+            return []
+
+        result = []
+        line_index = 0
+        to_skip = start_line
+        to_take = count
+        try:
+            for raw in proc.stdout:
+                if to_skip > 0:
+                    to_skip -= 1
+                    line_index += 1
+                    continue
+                line = raw.rstrip(b"\n\r").decode("utf-8", errors="replace")
+                try:
+                    obj = json.loads(line) if line.strip() else {}
+                except json.JSONDecodeError:
+                    obj = {"_raw": line[:500], "_error": True}
+                result.append((line_index, obj))
+                line_index += 1
+                to_take -= 1
+                if to_take <= 0:
+                    break
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
         return result
 
     def __enter__(self):
@@ -373,12 +488,12 @@ class JSONLViewerHandler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="View large JSONL files in the browser (sparse index + mmap, low RAM)."
+        description="View large JSONL or .jsonl.zst files in the browser (sparse index + mmap/zstdcat, low RAM)."
     )
     parser.add_argument(
         "file",
         type=str,
-        help="Path to the .jsonl file",
+        help="Path to the .jsonl or .jsonl.zst file",
     )
     parser.add_argument(
         "--port",
@@ -393,17 +508,22 @@ def main():
     )
     args = parser.parse_args()
 
-    jsonl_path = os.path.abspath(args.file)
-    if not os.path.isfile(jsonl_path):
-        print(f"Error: file not found: {jsonl_path}")
+    file_path = os.path.abspath(args.file)
+    if not os.path.isfile(file_path):
+        print(f"Error: file not found: {file_path}")
         return 1
 
-    index_mgr = IndexManager(jsonl_path)
+    index_mgr = IndexManager(file_path)
     if not index_mgr.exists() or args.rebuild_index:
-        print("Building sparse index (one-time scan)...")
+        kind = "zstd stream" if index_mgr.is_zst else "sparse index"
+        print(f"Building {kind} (one-time scan)...")
         def progress(n):
             print(f"  Indexed {n:,} lines...", end="\r")
-        index_mgr.build(progress_callback=progress)
+        try:
+            index_mgr.build(progress_callback=progress)
+        except RuntimeError as e:
+            print(f"Error: {e}")
+            return 1
         print(f"  Done. Total lines: {index_mgr.total_lines:,}. Index saved to {index_mgr.idx_path}")
     else:
         if not index_mgr.load():
@@ -411,7 +531,10 @@ def main():
             return 1
         print(f"Loaded index: {index_mgr.total_lines:,} lines.")
 
-    streamer = JSONLStreamer(jsonl_path, index_mgr)
+    if index_mgr.is_zst:
+        streamer = ZstdJSONLStreamer(file_path, index_mgr)
+    else:
+        streamer = JSONLStreamer(file_path, index_mgr)
     try:
         server = HTTPServer(("127.0.0.1", args.port), JSONLViewerHandler)
         server.streamer = streamer
