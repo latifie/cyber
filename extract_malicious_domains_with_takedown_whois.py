@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Generator, Iterable, Optional
 
+from common_utils import iter_uptime_files, parse_jsonl_stream
+
 
 DATA_DIR = Path(__file__).parent
 OUTPUT_DIR = DATA_DIR / "analysis_results"
@@ -27,65 +29,10 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 SAMPLE_DATA_DIR = DATA_DIR / "sample_data"
 
 
-def parse_jsonl_stream(filepath: Path) -> Generator[Dict, None, None]:
-    """Lit un fichier JSONL ou .zst ligne par ligne, sans tout charger en mémoire."""
-    is_compressed = str(filepath).endswith(".zst")
-    if is_compressed:
-        proc = subprocess.Popen(
-            ["zstdcat", str(filepath)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            bufsize=8192,
-        )
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                continue
-        proc.wait()
-    else:
-        with filepath.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    yield json.loads(line)
-                except json.JSONDecodeError:
-                    continue
 
 
-def _base_name(path: Path) -> str:
-    """Nom logique du fichier (sans .json ni .zst) pour dédupliquer .json / .json.zst."""
-    name = path.name
-    if name.endswith(".zst"):
-        name = name[:-4]  # remove .zst
-    if name.endswith(".json"):
-        name = name[:-5]  # remove .json
-    return name
 
 
-def iter_uptime_files(sample_mode: bool) -> list[Path]:
-    """Retourne la liste des fichiers uptimes à traiter (full ou sample).
-    Un seul fichier par jeu de données : si .json et .json.zst existent, on garde le .zst.
-    """
-    base = (SAMPLE_DATA_DIR / "uptimes") if sample_mode else (DATA_DIR / "uptimes")
-    if not base.exists():
-        return []
-    by_base: dict[str, Path] = {}
-    for p in base.iterdir():
-        if not p.is_file() or p.suffix not in {".json", ".zst"}:
-            continue
-        key = _base_name(p)
-        if key not in by_base or p.suffix == ".zst":
-            by_base[key] = p
-    return sorted(by_base.values())
 
 
 def takedown_has_whois(takedown: Optional[Dict]) -> bool:
