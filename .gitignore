@@ -49,4 +49,8 @@ Thumbs.db
 /__2024/
 /__2025/
 
+#Fichier d'indexation
 *.idx
+
+# Ancienne analyse obsolète
+old_analyse

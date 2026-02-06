@@ -1,118 +1,66 @@
 # 🔍 Analyse des Domaines Malicieux - Projet Cyber
 
-Ce projet analyse le vieillissement des domaines malveillants et leur utilisation par les attaquants, en se concentrant sur les transitions DNS (NOERROR → NXDOMAIN) et les takedowns.
+Ce projet se concentre sur l'identification et l'analyse des domaines malveillants, en particulier ceux ayant fait l'objet d'un "takedown" lié au **WHOIS**.
 
 ## 📋 Structure du Projet
 
 ```
 cyber/
-├── analyze_domains.py              # Script principal d'analyse
-├── analyze_malicious_domains.py    # Script d'analyse spécialisé pour domaines malicieux
-├── contexte.txt                    # Documentation technique complète
-├── sample_data/                    # Échantillons de données pour tests
-│   ├── down_domains_sample.jsonl
-│   └── down_domains_malicious_sample.jsonl
-├── uptimes/                        # Schémas et exemples
-│   ├── schema.json
-│   └── sample.json
-└── Documentation/
-    ├── CREATION_DOWN_DOMAINS_MALICIOUS.md
-    ├── EXPLICATION_GRAPHIQUES_MALICIEUX.md
-    └── GRAPHIQUES_DOMAINES_MALICIEUX.md
+├── extract_malicious_domains_with_takedown_whois.py  # Script principal d'extraction
+├── common_utils.py                                   # Utilitaires partagés (lecture JSONL/ZST)
+├── visualisation/                                    # Outils de visualisation et graphiques
+│   └── jsonl_viewer.py                               # Visualiseur de fichiers JSONL
+├── analysis_results/                                 # Dossier de sortie des résultats
+├── sample_data/                                      # Données d'échantillon pour tests
+├── uptimes/                                          # Dossier source des données (non versionné si volumineux)
+├── old_analyse/                                      # Anciens scripts et résultats archivés
+└── 2022/, 2023/, 2025/ ...                           # Dossiers de données brutes par année
 ```
 
 ## 🚀 Utilisation
 
-### Mode Normal (Analyse Complète)
+### Extraction des domaines malicieux
+
+Le script principal `extract_malicious_domains_with_takedown_whois.py` parcourt les fichiers de données uptime et extrait les domaines dont le takedown est de type "whois".
 
 ```bash
-# Analyse complète de tous les fichiers
-python3 analyze_domains.py
+# Mode Normal (analyse les fichiers dans le dossier 'uptimes/')
+python3 extract_malicious_domains_with_takedown_whois.py
 
-# Mode DNS-only (seulement transitions DNS)
-python3 analyze_domains.py --dns-only
+# Mode Échantillon (analyse les fichiers dans 'sample_data/uptimes/')
+python3 extract_malicious_domains_with_takedown_whois.py --sample
 ```
 
-### Mode Échantillon (Tests Rapides)
+**Sortie :** Les fichiers résultats sont générés dans `analysis_results/` avec le format `malicious_domains_takedown_whois_{mode}_{timestamp}.jsonl`.
+
+### Visualisation
+
+Des outils de visualisation sont disponibles dans le dossier `visualisation/`.
 
 ```bash
-# Utilise les fichiers d'échantillon dans sample_data/
-python3 analyze_domains.py --sample
-
-# Analyse des domaines malicieux avec échantillon
-python3 analyze_malicious_domains.py --sample
+# Lancer le visualiseur JSONL (exemple)
+python3 visualisation/jsonl_viewer.py
 ```
 
-## 📊 Génération des Graphiques
+## 🔧 Dépendances et Prérequis
 
-Les graphiques générés incluent un suffixe indiquant le mode d'exécution :
-
-- `_full` : Analyse complète (toutes les données)
-- `_sample` : Mode échantillon (données d'échantillon)
-- `_dns-only` : Mode DNS-only (seulement transitions DNS)
-- `_sample_dns-only` : Mode échantillon + DNS-only
-
-**Exemples :**
-- `creation_delays_full.png` : Analyse complète
-- `creation_delays_sample.png` : Analyse sur échantillon
-- `malicious_attack_source_analysis_full.png` : Analyse complète des domaines malicieux
-
-## 📁 Échantillons de Données
-
-Les échantillons dans `sample_data/` contiennent 1000 lignes extraites des fichiers complets :
-
-- `down_domains_sample.jsonl` : Échantillon de tous les domaines avec transition
-- `down_domains_malicious_sample.jsonl` : Échantillon des domaines malicieux uniquement
-
-**Créer de nouveaux échantillons :**
-```bash
-head -1000 analysis_results/down_domains.jsonl > sample_data/down_domains_sample.jsonl
-head -1000 analysis_results/down_domains_malicious.jsonl > sample_data/down_domains_malicious_sample.jsonl
-```
-
-## 🔧 Dépendances
-
-- Python 3.6+
-- `matplotlib`, `pandas`, `numpy` (pour les graphiques)
-- `tqdm` (optionnel, pour les barres de progression)
-- `zstd` (pour lire les fichiers compressés `.zst`)
+- **Python 3.6+**
+- **Outil système `zstd`** : Requis pour la lecture des fichiers compressés `.zst` (utilisé via `zstdcat`).
 
 **Installation :**
+
+Sur Linux (Debian/Ubuntu) :
 ```bash
-pip install matplotlib pandas numpy tqdm
+sudo apt install zstd
 ```
 
-## 📖 Documentation
-
-- **`contexte.txt`** : Documentation technique complète du projet
-- **`CREATION_DOWN_DOMAINS_MALICIOUS.md`** : Explication de la création du fichier de domaines malicieux
-- **`EXPLICATION_GRAPHIQUES_MALICIEUX.md`** : Explication détaillée de chaque graphique
-- **`GRAPHIQUES_DOMAINES_MALICIEUX.md`** : Liste des graphiques basés sur les domaines malicieux
-
-## 🎯 Fonctionnalités Principales
-
-1. **Analyse des transitions DNS** : Détection NOERROR → NXDOMAIN
-2. **Filtrage des domaines malicieux** : Identification des domaines qui restent down
-3. **Calcul des délais** : Création → utilisation, découverte → takedown
-4. **Analyses spécialisées** : Par source, target, registraire, TLD, etc.
-5. **Visualisations** : Graphiques PNG haute résolution (300 DPI)
+Le projet utilise principalement la librairie standard Python. Les dépendances spécifiques pour la visualisation (comme `matplotlib`, `pandas`) peuvent être requises si vous utilisez les scripts dans `visualisation/` ou `old_analyse/`.
 
 ## 📝 Notes
 
-- Les fichiers volumineux (`.zst`, `.jsonl` complets) sont exclus du dépôt Git
-- Seuls les échantillons dans `sample_data/` sont versionnés
-- Les résultats d'analyse sont dans `analysis_results/` (exclus du Git)
+- Les données volumineuses (fichiers `.zst` complets) sont généralement exclues du contrôle de version.
+- `common_utils.py` gère la lecture transparente des fichiers bruts (`.json`) et compressés (`.zst`).
 
 ## 🔗 Dépôt Git
 
 **Remote :** `git@gitlab.ensimag.fr:piconf/cyber.git`
-
-**Cloner le dépôt :**
-```bash
-git clone git@gitlab.ensimag.fr:piconf/cyber.git
-```
-
----
-
-**Auteur :** Projet Cyber - Analyse automatique  
-**Date :** 2025
