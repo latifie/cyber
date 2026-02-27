@@ -71,3 +71,32 @@ def iter_uptime_files(sample_mode: bool, data_dir: Path = DATA_DIR, sample_dir: 
         if key not in by_base or p.suffix == ".zst":
             by_base[key] = p
     return sorted(by_base.values())
+
+
+def iter_yearly_files(sample_mode: bool, data_dir: Path = DATA_DIR, sample_dir: Path = SAMPLE_DATA_DIR) -> list[Path]:
+    """Retourne la liste des fichiers dans les dossiers annuels (2022, 2023, __2024, 2025).
+    Un seul fichier par jeu de données : si .json et .json.zst existent, on garde le .zst.
+    """
+    base = sample_dir if sample_mode else data_dir
+    if not base.exists():
+        return []
+    
+    # Dossiers à scanner
+    yearly_dirs = ["2022", "2023", "__2024", "2025"]
+    
+    all_files = []
+    by_base: dict[str, Path] = {}
+    
+    for year_dir in yearly_dirs:
+        year_path = base / year_dir
+        if not year_path.exists() or not year_path.is_dir():
+            continue
+        
+        for p in year_path.iterdir():
+            if not p.is_file() or p.suffix not in {".json", ".zst"}:
+                continue
+            key = f"{year_dir}/{_base_name(p)}"  # Inclure le dossier dans la clé
+            if key not in by_base or p.suffix == ".zst":
+                by_base[key] = p
+    
+    return sorted(by_base.values())
