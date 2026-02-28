@@ -88,12 +88,18 @@ def main():
                         if creation_date and update_date:
                             break
                         
-            # Recherche Re-up (NXDOMAIN -> NOERROR)
-            # Cette info n'est pas forcément flagrante dans 'uptimes' sans calcul, on simule l'extraction si "remains_nxdomain" était calculé
-            # Sinon, on le déduit des uptimes actuels
+            # Recherche Re-up (NXDOMAIN -> NOERROR) et Comptage d'IPs
             has_reup = False
+            ips = set()
             if rec.get("uptime"):
-                dns_statuses = [u.get("dns_status") for u in rec["uptime"] if u.get("type") == "dns" and u.get("dns_status")]
+                dns_statuses = []
+                for u in rec["uptime"]:
+                    if u.get("type") == "dns" and u.get("dns_status"):
+                        dns_statuses.append(u.get("dns_status"))
+                    if u.get("arec"):
+                        for ip in u["arec"]:
+                            ips.add(ip)
+                
                 # Simple heuristique: Mettre à True s'il y a un NOERROR *après* un NXDOMAIN
                 nx_seen = False
                 for status in dns_statuses:
@@ -102,6 +108,14 @@ def main():
                     elif status == "NOERROR" and nx_seen:
                         has_reup = True
                         break
+            
+            unique_ips_count = len(ips)
+
+            # Extractions Morphologiques (Hypothèse 8)
+            domain_name = rec.get("rd", "").split(".")[0] # On enlève le TLD pour analyser le nom lui-même
+            domain_length = len(domain_name)
+            dash_count = domain_name.count("-")
+            digit_count = sum(c.isdigit() for c in domain_name)
 
             # Calculs finaux si on a creation et discovery
             if creation_date and discovery and takedown_dur is not None:
@@ -118,6 +132,40 @@ def main():
                         drop_catching_days = (dt_disc - dt_update).total_seconds() / 86400.0
                         
                     if 0 <= aging_days <= 18250: # max 50 ans
+                        
+                        # --- CALCUL DU SCORE DE SOPHISTICATION (Hypothèse 10) ---
+                        score = 0
+                        
+                        # 1. Âge (Max 25 points) - Un domaine vieilli volontairement demande des ressources
+                        if aging_days > 60: score += 25
+                        elif aging_days > 30: score += 15
+                        elif aging_days > 7: score += 5
+                        
+                        # 2. TLD Premium vs Gratuit (Max 15 points)
+                        premium_tlds = {"com", "org", "net", "co", "us", "uk", "fr", "de", "ca", "io"}
+                        free_tlds = {"tk", "ml", "ga", "cf", "gq", "xyz", "top", "pw", "site", "online", "click", "vip", "win", "bid"}
+                        if tld in premium_tlds:
+                            score += 15
+                        elif tld not in free_tlds:
+                            score += 5
+                            
+                        # 3. Morphologie (Dissimulation vs Phishing de masse) (Max 20 points)
+                        # Un nom court sans tirets ressemble plus à un service légitime (C&C, dropzone)
+                        if domain_length < 15: score += 10
+                        if dash_count < 2: score += 5
+                        if digit_count == 0: score += 5
+                            
+                        # 4. Infrastructure (IP multiples / Fast Flux) (Max 20 points)
+                        if unique_ips_count > 3: score += 20
+                        elif unique_ips_count > 1: score += 10
+                            
+                        # 5. Drop Catching (Tire parti de la réputation de vieux domaines) (Max 20 points)
+                        if drop_catching_days is not None and drop_catching_days < 14 and aging_days > 365:
+                            score += 20
+                            
+                        # Sécurité max
+                        sophistication_score = min(score, 100)
+
                         data_points.append({
                             "aging_days": aging_days,
                             "takedown_hours": takedown_dur,
@@ -125,7 +173,10 @@ def main():
                             "tld": tld,
                             "trg": trg,
                             "has_reup": has_reup,
-                            "drop_catching_days": drop_catching_days
+                            "drop_catching_days": drop_catching_days,
+                            "domain_length": domain_length,
+                            "unique_ips_count": unique_ips_count,
+                            "sophistication_score": sophistication_score
                         })
 
     print(f"[+] Total domaines traités: {len(data_points)}")
@@ -246,6 +297,59 @@ def main():
             plt.ylabel("Survie avant Takedown (Heures)")
             plt.tight_layout()
             plt.savefig(GRAPHS_DIR / "h7_reactivite_cible.png", dpi=300)
+    plt.close()
+
+    # Hypothèse 8 : Morphologie du Nom de Domaine
+    # Regardons si la taille du nom a un impact sur sa longévité (les très longs sont-ils détectés plus vite ?)
+    plt.figure(figsize=(10, 6))
+    x_len = [d["domain_length"] for d in data_points]
+    y_surv_h8 = [d["takedown_hours"] for d in data_points]
+    
+    sns.scatterplot(x=x_len, y=y_surv_h8, alpha=0.5, color="orange", s=60)
+    # Tendance morphologie
+    if len(x_len) > 1:
+        z_len = np.polyfit(x_len, y_surv_h8, 1)
+        p_len = np.poly1d(z_len)
+        plt.plot(sorted(x_len), p_len(sorted(x_len)), "r--", alpha=0.8)
+        
+    plt.title("H8: Morphologie - Longueur du domaine vs Temps de Survie")
+    plt.xlabel("Longueur du domaine (sans TLD)")
+    plt.ylabel("Survie avant Takedown (Heures)")
+    plt.tight_layout()
+    plt.savefig(GRAPHS_DIR / "h8_morphologie_longueur.png", dpi=300)
+    plt.close()
+
+    # Hypothèse 9 : Infrastructure et IP Partagées (Fast Flux / Résilience IP)
+    plt.figure(figsize=(10, 6))
+    # Boite à moustaches: Âge selon le nombre d'IPs uniques (plus d'IP = domaine géré de façon plus pro ?)
+    sns.boxplot(x=[d["unique_ips_count"] for d in data_points], 
+                y=[d["aging_days"] for d in data_points],
+                palette="viridis")
+    plt.yscale('log')
+    plt.title("H9: Infrastructure IP - Nombre d'IPs uniques de résolution vs Âge du Domaine")
+    plt.xlabel("Nombre d'Adresses IP distinctes (A-Records observés)")
+    plt.ylabel("Vieillissement du Domaine (Jours - Échelle Log)")
+    plt.tight_layout()
+    plt.savefig(GRAPHS_DIR / "h9_infrastructure_ips.png", dpi=300)
+    plt.close()
+
+    # Hypothèse 10 : Score de Sophistication de l'Infrastructure Criminelle
+    plt.figure(figsize=(10, 6))
+    scores = [d["sophistication_score"] for d in data_points]
+    
+    # Histogramme de distribution des scores
+    sns.histplot(scores, bins=20, kde=True, color="crimson")
+    plt.title("H10: Distribution du Score de Sophistication des Attaques (0 - 100)")
+    plt.xlabel("Score de Sophistication (Pondération Âge, TLD, Fast-Flux, Drop Catching...)")
+    plt.ylabel("Nombre de Domaines")
+    
+    # Lignes pour séparer grossièrement les "niveaux"
+    plt.axvline(x=25, color='gray', linestyle='--', label='Faible Sophistication')
+    plt.axvline(x=60, color='black', linestyle='--', label='Haute Sophistication')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig(GRAPHS_DIR / "h10_sophistication_score.png", dpi=300)
     plt.close()
 
     print("[*] Graphiques générés dans :", GRAPHS_DIR)

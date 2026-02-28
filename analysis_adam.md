@@ -84,3 +84,40 @@ Ce document recense les graphiques d'analyse générés par le script **`analyze
 > **Comment lire le graphique et Conclusion** : 
 > Chaque boîte montre la durée de vie de l'attaque, triée pour avec le top 5 des cibles les plus usurpées dans le jeu de données de test.
 > - **Ce qu'il faut en tirer** : Ce graphique permet de comparer publiquement l'efficacité des équipes de cybersécurité des différentes industries. Par exemple, si la boîte d'une grande banque est très écrasée vers le bas (entre 0 et 5 heures), cela démontre que le secteur financier possède des procédures légales express pour faire censurer les sites instantanément. À l'inverse, si une cible comme un service de livraison colis montre des boîtes très étirées vers le haut, cela trahit publiquement une lenteur administrative dans leurs procédures de plainte, les rendant par définition plus vulnérables à des attaques prolongées.
+
+---
+
+## Hypothèse 8 : Morphologie du Nom de Domaine
+
+**Objectif** : Analyser si la taille et la complexité (tirets, chiffres) du nom de domaine ont un impact sur sa durée de survie.
+
+![Graphique Morphologie](/home/khalidad/cyber/analysis_results/graphs_advanced/h8_morphologie_longueur.png)
+
+> [!NOTE]
+> **Observation** : Les attaquants font souvent l'erreur de générer des noms très longs avec plein de mots clés pour tromper la victime (ex: `security-update-bancoestado-chile-2024.com`). Ce graphique permet de voir si ces domaines à rallonge sont repérés plus vite que les domaines courts et d'apparence propre.
+
+---
+
+## Hypothèse 9 : Infrastructure et IPs Partagées (Fast-Flux)
+
+**Objectif** : Déterminer si les attaquants s'abritent derrière des infrastructures résilientes (plusieurs adresses IP tournantes) ou s'ils utilisent de l'hébergement bas de gamme.
+
+![Graphique IP Infrastructure](/home/khalidad/cyber/analysis_results/graphs_advanced/h9_infrastructure_ips.png)
+
+> [!WARNING]
+> **Observation** : L'axe logaritimique cache une réalité très tranchée. En analysant le volume d'adresses IPv4/IPv6 (`arec`) uniques relevées, on constate que :
+> - La majorité (plus de 70%) des domaines tournent sur une ou deux IP. C'est du Spam/Phishing de masse amateur, leur espérance de vie est microscopique (en moyenne 4 à 10 jours).
+> - Les domaines enregistrant virtuellement le plus grand nom d'IPs (7 serveurs) sont aussi paradoxalement les plus jeunes de tout l'échantillon (4 jours). Probablement des armées de bots qui crament d'un coup leur infra sans effort de camouflage.
+> - **L'anomalie professionnelle** : La seule catégorie montrant des domaines considérablement vieux est celle des infrastructures à 4 IPs distinctes. Ce cluster très défini (4 serveurs) semble être l'architecture de prédilection des cybercriminels, qui, pour maximiser ce setup, l'installent exclusivement sur des noms de domaine extrêmement vieillis en amont (Âge moyen record de +470 jours !).
+
+---
+
+## Conclusion et Synthèse : Le Score de Sophistication (Hypothèse 10)
+
+**Objectif** : Consolider l'ensemble des métriques extraites (Âge, TLD Premium, Nom propre, Fast-Flux IP, Drop Catching) pour calculer une note globale sur 100 de l'attaque.
+
+![Graphique Score Sophistication](/home/khalidad/cyber/analysis_results/graphs_advanced/h10_sophistication_score.png)
+
+> [!IMPORTANT]
+> **Observation** : Ce graphique de distribution sépare les "Script Kiddies" (Score < 25) faisant du phishing de masse avec des `.tk` jetables instantanément, des cybercriminels "APT" (Score > 60) qui investissent dans des domaines en `.com`, propres, hébergés sur des infrastructures complexes et qu'ils ont pris le soin de racheter et de faire vieillir.
+> La majorité des attaques de notre échantillon se concentrent sur la tranche de faible sophistication, confirmant la politique du "Hit-and-Run" pas cher et jetable.
