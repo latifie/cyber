@@ -70,16 +70,23 @@ def main():
                 
             metadata = rec.get("metadata", {})
             tld = metadata.get("tld", "unknown")
+            trg = metadata.get("trg", "unknown") # Nouvelle extraction cible
             
-            # Rechercher date de création (cd)
+            # Rechercher date de création (cd) et de mise à jour (ud)
             creation_date = None
-            if rec.get("whois_bd") and rec["whois_bd"].get("cd"):
-                creation_date = rec["whois_bd"]["cd"]
+            update_date = None
+            if rec.get("whois_bd"):
+                creation_date = rec["whois_bd"].get("cd")
+                update_date = rec["whois_bd"].get("ud")
             elif rec.get("uptime"):
                 for entry in rec["uptime"]:
-                    if entry.get("type") == "whois" and entry.get("cd"):
-                        creation_date = entry.get("cd")
-                        break
+                    if entry.get("type") == "whois":
+                        if entry.get("cd") and not creation_date:
+                            creation_date = entry.get("cd")
+                        if entry.get("ud") and not update_date:
+                            update_date = entry.get("ud")
+                        if creation_date and update_date:
+                            break
                         
             # Recherche Re-up (NXDOMAIN -> NOERROR)
             # Cette info n'est pas forcément flagrante dans 'uptimes' sans calcul, on simule l'extraction si "remains_nxdomain" était calculé
@@ -100,15 +107,25 @@ def main():
             if creation_date and discovery and takedown_dur is not None:
                 dt_create = parse_datetime(creation_date)
                 dt_disc = parse_datetime(discovery)
+                dt_update = parse_datetime(update_date) if update_date else None
+                
                 if dt_create and dt_disc:
                     aging_days = (dt_disc - dt_create).total_seconds() / 86400.0
+                    
+                    # Drop Catching H6 : Si la mise à jour (ud) est intervenue LONGTEMPS après la création mais JUSTE AVANT l'attaque
+                    drop_catching_days = None
+                    if dt_update and dt_update > dt_create:
+                        drop_catching_days = (dt_disc - dt_update).total_seconds() / 86400.0
+                        
                     if 0 <= aging_days <= 18250: # max 50 ans
                         data_points.append({
                             "aging_days": aging_days,
                             "takedown_hours": takedown_dur,
                             "takedown_reason": takedown_reason,
                             "tld": tld,
-                            "has_reup": has_reup
+                            "trg": trg,
+                            "has_reup": has_reup,
+                            "drop_catching_days": drop_catching_days
                         })
 
     print(f"[+] Total domaines traités: {len(data_points)}")
@@ -189,6 +206,46 @@ def main():
     plt.legend()
     plt.tight_layout()
     plt.savefig(GRAPHS_DIR / "h5_specialisation_tld.png", dpi=300)
+    plt.close()
+
+    # Hypothèse 6 : Drop Catching (Recyclage de vieux domaines)
+    # Comparaison de l'âge total du domaine vs le temps écoulé depuis sa dernière "mise à jour" (qui trahit un rachat)
+    plt.figure(figsize=(10, 6))
+    drop_data = [d for d in data_points if d.get("drop_catching_days") is not None]
+    
+    if drop_data:
+        x_total_age = [d["aging_days"] for d in drop_data]
+        y_recent_update = [d["drop_catching_days"] for d in drop_data]
+        
+        sns.scatterplot(x=x_total_age, y=y_recent_update, alpha=0.7, color="teal", s=80)
+        plt.plot([0, max(x_total_age or [1])], [0, max(x_total_age or [1])], 'r--', alpha=0.5, label="Mise à jour = Création")
+        
+        plt.title("H6: Détection de Drop Catching (Âge total vs Jours depuis la dernière MAJ)")
+        plt.xlabel("Âge total du domaine (Jours)")
+        plt.ylabel("Jours écoulés entre la dernière MAJ (ud) et l'attaque")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(GRAPHS_DIR / "h6_drop_catching.png", dpi=300)
+    plt.close()
+
+    # Hypothèse 7 : Taux d'Uptime malveillant selon le Secteur Cible
+    # Regrouper les cibles pour voir qui réagit le plus vite
+    plt.figure(figsize=(12, 6))
+    valid_h7 = [d for d in data_points if d.get("trg") and d["takedown_hours"] is not None]
+    
+    if valid_h7:
+        # On ne garde que les top 5 cibles pour la lisibilité
+        from collections import Counter
+        top_targets = [t[0] for t in Counter([d["trg"] for d in valid_h7 if d["trg"] != "unknown"]).most_common(5)]
+        h7_data = [d for d in valid_h7 if d["trg"] in top_targets]
+        
+        if h7_data:
+            sns.boxplot(x=[d["trg"] for d in h7_data], y=[d["takedown_hours"] for d in h7_data], palette="magma")
+            plt.title("H7: Réactivité Défensive par Cible (USPS, Banques, etc.)")
+            plt.xlabel("Cible usurprée (Target)")
+            plt.ylabel("Survie avant Takedown (Heures)")
+            plt.tight_layout()
+            plt.savefig(GRAPHS_DIR / "h7_reactivite_cible.png", dpi=300)
     plt.close()
 
     print("[*] Graphiques générés dans :", GRAPHS_DIR)
