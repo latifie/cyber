@@ -159,7 +159,7 @@ def main():
         fpath = Path(args.input)
         is_sample = False
     elif args.sample:
-        fpath = SAMPLE_DIR / "down_domains_malicious_sample.jsonl.zst"
+        fpath = SAMPLE_DIR / "down_domains_malicious_sample.jsonl"
         is_sample = True
     else:
         print("Please specify --input or --sample")

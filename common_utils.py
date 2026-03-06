@@ -14,7 +14,8 @@ UPTIMES_DIR_NAME = "uptimes"
 
 def parse_jsonl_stream(filepath: Path) -> Generator[Dict, None, None]:
     """Lit un fichier JSONL ou .zst ligne par ligne, sans tout charger en mémoire."""
-    if str(filepath).endswith(".zst"):
+    is_compressed = str(filepath).endswith(".zst")
+    if is_compressed:
         proc = subprocess.Popen(
             ["zstdcat", str(filepath)],
             stdout=subprocess.PIPE,
@@ -44,6 +45,7 @@ def parse_jsonl_stream(filepath: Path) -> Generator[Dict, None, None]:
                 except json.JSONDecodeError:
                     continue
 
+
 def _base_name(path: Path) -> str:
     """Nom logique du fichier (sans .json ni .zst) pour dédupliquer .json / .json.zst."""
     name = path.name
@@ -56,12 +58,11 @@ def _base_name(path: Path) -> str:
 
 def iter_uptime_files(sample_mode: bool, data_dir: Path = DATA_DIR, sample_dir: Path = SAMPLE_DATA_DIR) -> list[Path]:
     """Retourne la liste des fichiers uptimes à traiter (full ou sample).
-    Supporte les .json (données brutes) et .zst.
+    Un seul fichier par jeu de données : si .json et .json.zst existent, on garde le .zst.
     """
     base = (sample_dir / UPTIMES_DIR_NAME) if sample_mode else (data_dir / UPTIMES_DIR_NAME)
     if not base.exists():
         return []
-        
     by_base: dict[str, Path] = {}
     for p in base.iterdir():
         if not p.is_file() or p.suffix not in {".json", ".zst"}:
@@ -69,5 +70,4 @@ def iter_uptime_files(sample_mode: bool, data_dir: Path = DATA_DIR, sample_dir: 
         key = _base_name(p)
         if key not in by_base or p.suffix == ".zst":
             by_base[key] = p
-            
     return sorted(by_base.values())
