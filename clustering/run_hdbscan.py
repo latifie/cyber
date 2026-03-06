@@ -4,6 +4,8 @@ import joblib
 import pandas as pd
 import hdbscan
 import numpy as np
+import scipy.sparse as sp
+from sklearn.decomposition import TruncatedSVD
 import gc
 from pathlib import Path
 from datetime import datetime
@@ -88,7 +90,7 @@ def run_clustering(input_file: Path, output_prefix: str, min_cluster_size: int, 
         meta_asn.extend(df_batch["asn"].tolist())
         meta_creation.extend(df_batch["creation_ts"].tolist())
         
-        # Transform to float32 numpy array
+        # Transform to float32 sparse matrix
         X_batch = vectorizer.transform(df_batch)
         X_batches.append(X_batch)
         
@@ -97,12 +99,21 @@ def run_clustering(input_file: Path, output_prefix: str, min_cluster_size: int, 
         del records
         
     print("[+] Stacking vectors...")
-    X_final = np.vstack(X_batches)
+    X_sparse = sp.vstack(X_batches, format='csr')
     del X_batches
     gc.collect()
     
-    print(f"[+] Final Matrix Shape: {X_final.shape}, Type: {X_final.dtype}")
-    print(f"[+] Matrix Size in RAM: {X_final.nbytes / 1024**3:.2f} GB")
+    print(f"[+] Sparse Matrix Shape: {X_sparse.shape}")
+    
+    print("[+] Reducing dimensions with TruncatedSVD (128 components)...")
+    svd = TruncatedSVD(n_components=128, random_state=42)
+    X_final = svd.fit_transform(X_sparse)
+    
+    del X_sparse
+    gc.collect()
+    
+    print(f"[+] Final Dense Matrix Shape: {X_final.shape}, Type: {X_final.dtype}")
+    print(f"[+] Final Dense Matrix Size in RAM: {X_final.nbytes / 1024**3:.2f} GB")
     
     # --- Clustering ---
     print(f"[+] Running HDBSCAN (min_cluster_size={min_cluster_size}, metric=euclidean)...")
@@ -159,7 +170,7 @@ def main():
         fpath = Path(args.input)
         is_sample = False
     elif args.sample:
-        fpath = SAMPLE_DIR / "down_domains_malicious_sample.jsonl"
+        fpath = SAMPLE_DIR / "down_domains_malicious_sample.jsonl.zst"
         is_sample = True
     else:
         print("Please specify --input or --sample")
