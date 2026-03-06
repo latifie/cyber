@@ -1,0 +1,84 @@
+================================================================================
+RAPPORT D'ANALYSE - DOMAINES MALICIEUX (SAMPLE)
+================================================================================
+
+Fichier analysé: malicious_domains_takedown_whois_full_20260306_132236.jsonl
+Total de domaines: 653989
+
+HYPOTHÈSE 1: VIEILLISSEMENT DES DOMAINES
+--------------------------------------------------------------------------------
+Domaines avec données: 647300/653989
+Moyenne: 112.3 jours
+Médiane: 4.2 jours
+Q1-Q3: 1.7 - 34.9 jours
+Min-Max: 0.0 - 10685.7 jours
+
+INTERPRÉTATION:
+✓ 4.2 jours médiane = utilisation IMMÉDIATE après création
+✓ Confirme stratégie 'hit-and-run' sans vieillissement intentionnel
+✓ 54% des domaines utilisés en ≤5 jours
+
+HYPOTHÈSE 2: PATTERNS D'ATTAQUE
+--------------------------------------------------------------------------------
+
+TOP 10 SOURCES:
+  APWG: 267041 (40.8%)
+  PHISHTANK: 190289 (29.1%)
+  OPENPHISH: 188157 (28.8%)
+  URLHAUS: 8502 (1.3%)
+
+TOP 15 CIBLES:
+  Other: 170649 (26.1%)
+  USPS: 59463 (9.1%)
+  Generic/Spear Phishing: 41336 (6.3%)
+  Facebook: 18129 (2.8%)
+  WhatsApp: 17414 (2.7%)
+  National Police Agency JAPAN: 17318 (2.6%)
+  Telegram: 14550 (2.2%)
+  Facebook, Inc.: 13871 (2.1%)
+  naver: 13760 (2.1%)
+  other: 13388 (2.0%)
+  unknown: 12350 (1.9%)
+  United States Postal Service: 12053 (1.8%)
+  Meta: 11448 (1.8%)
+  Allegro: 9811 (1.5%)
+  Crypto/Wallet: 9294 (1.4%)
+
+TOP 15 TLDs:
+  .com: 151564 (23.2%)
+  .top: 128001 (19.6%)
+  .xyz: 32924 (5.0%)
+  .xin: 28371 (4.3%)
+  .shop: 22914 (3.5%)
+  .icu: 20850 (3.2%)
+  .cfd: 20335 (3.1%)
+  .cn: 15909 (2.4%)
+  .info: 14975 (2.3%)
+  .online: 13618 (2.1%)
+  .vip: 12855 (2.0%)
+  .click: 11184 (1.7%)
+  .win: 10352 (1.6%)
+  .site: 9905 (1.5%)
+  .sbs: 9889 (1.5%)
+
+INTERPRÉTATION:
+✓ Cible dominante: Other (170649 domaines, 26.1%)
+✓ TLD le plus abusé: .com (151564 domaines, 23.2%)
+
+HYPOTHÈSE 3: DÉLAI DE TAKEDOWN
+--------------------------------------------------------------------------------
+Domaines avec données: 653845/653989
+Moyenne: 82.9h (3.5j)
+Médiane: 35.8h (1.5j)
+Min-Max: 0.0h - 1482.8h
+
+PAR TYPE DE TAKEDOWN:
+  WHOIS: 183141 domaines, médiane 11.9h (0.5j)
+  CONTENT: 123717 domaines, médiane 23.9h (1.0j)
+  DNS: 346987 domaines, médiane 47.8h (2.0j)
+
+INTERPRÉTATION:
+✓ Délai médian: 35.8h (1.5j)
+✓ Réponse dans les 3 jours - efficace
+
+================================================================================
