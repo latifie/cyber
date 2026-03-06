@@ -80,90 +80,88 @@ def calculate_takedown_hours(discovery_time: str, takedown_time: str) -> Optiona
     return hours
 
 
-def load_malicious_domains(filepath: Path) -> List[Dict]:
-    """Charge les domaines malicieux depuis le JSONL."""
-    domains = []
+def analyze_domains(filepath: Path) -> Dict:
+    """Analyse les 3 hypothèses en streaming (ligne par ligne) pour économiser la mémoire."""
+    print(f"[+] Analyse en cours: {filepath}")
+    
+    # Structures de données pour stocker uniquement les valeurs nécessaires
+    aging_days = []
+    sources = Counter()
+    targets = Counter()
+    tlds = Counter()
+    takedown_hours = []
+    takedown_by_reason = defaultdict(list)
+    
+    count = 0
     with filepath.open('r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             try:
-                domains.append(json.loads(line))
+                rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-    return domains
-
-
-def analyze_domains(filepath: Path) -> Dict:
-    """Analyse principale des 3 hypothèses."""
-    print(f"[+] Chargement: {filepath}")
-    domains = load_malicious_domains(filepath)
-    print(f"[+] Domaines chargés: {len(domains)}")
-    
-    # Structures de données
-    aging_days = []
-    sources = []
-    targets = []
-    tlds = []
-    takedown_hours = []
-    takedown_by_reason = defaultdict(list)
-    
-    # Analyse de chaque domaine
-    for rec in domains:
-        # === HYPOTHÈSE 1: VIEILLISSEMENT ===
-        discovery_time = rec.get('discovery_time')
-        
-        # Trouver la date de création (cd) depuis whois_bd ou uptime
-        creation_date = None
-        if 'whois_bd' in rec and rec['whois_bd']:
-            creation_date = rec['whois_bd'].get('cd')
-        
-        # Si pas trouvé, chercher dans uptime
-        if not creation_date and 'uptime' in rec:
-            for entry in rec['uptime']:
-                if entry.get('type') == 'whois' and entry.get('cd'):
-                    creation_date = entry['cd']
-                    break
-        
-        if discovery_time and creation_date:
-            aging = calculate_aging_days(discovery_time, creation_date)
-            if aging is not None:
-                aging_days.append(aging)
-        
-        # === HYPOTHÈSE 2: PATTERNS D'ATTAQUE ===
-        metadata = rec.get('metadata', {})
-        if metadata:
-            src = metadata.get('src')
-            trg = metadata.get('trg')
-            tld = metadata.get('tld')
-            
-            if src:
-                sources.append(src)
-            if trg:
-                targets.append(trg)
-            if tld:
-                tlds.append(tld)
-        
-        # === HYPOTHÈSE 3: DÉLAI TAKEDOWN ===
-        takedown = rec.get('takedown', {})
-        if takedown and 'takedowns' in takedown:
-            takedowns_list = takedown['takedowns']
-            if takedowns_list and len(takedowns_list) > 0:
-                # Premier takedown
-                first_takedown = takedowns_list[0]
-                takedown_dt = first_takedown.get('dt')
-                takedown_type = first_takedown.get('type', 'unknown')
                 
-                if discovery_time and takedown_dt:
-                    hours = calculate_takedown_hours(discovery_time, takedown_dt)
-                    if hours is not None:
-                        takedown_hours.append(hours)
-                        takedown_by_reason[takedown_type].append(hours)
+            count += 1
+            if count % 10000 == 0:
+                print(f"    - {count} domaines traités...", end='\r')
+            
+            # === HYPOTHÈSE 1: VIEILLISSEMENT ===
+            discovery_time = rec.get('discovery_time')
+            
+            # Trouver la date de création (cd) depuis whois_bd ou uptime
+            creation_date = None
+            if 'whois_bd' in rec and rec['whois_bd']:
+                creation_date = rec['whois_bd'].get('cd')
+            
+            # Si pas trouvé, chercher dans uptime
+            if not creation_date and 'uptime' in rec:
+                for entry in rec['uptime']:
+                    if entry.get('type') == 'whois' and entry.get('cd'):
+                        creation_date = entry['cd']
+                        break
+            
+            if discovery_time and creation_date:
+                aging = calculate_aging_days(discovery_time, creation_date)
+                if aging is not None:
+                    aging_days.append(aging)
+            
+            # === HYPOTHÈSE 2: PATTERNS D'ATTAQUE ===
+            metadata = rec.get('metadata', {})
+            if metadata:
+                src = metadata.get('src')
+                trg = metadata.get('trg')
+                tld = metadata.get('tld')
+                
+                if src:
+                    sources[src] += 1
+                if trg:
+                    targets[trg] += 1
+                if tld:
+                    tlds[tld] += 1
+            
+            # === HYPOTHÈSE 3: DÉLAI TAKEDOWN ===
+            takedown = rec.get('takedown', {})
+            if takedown and 'takedowns' in takedown:
+                takedowns_list = takedown['takedowns']
+                if takedowns_list and len(takedowns_list) > 0:
+                    # Premier takedown
+                    first_takedown = takedowns_list[0]
+                    takedown_dt = first_takedown.get('dt')
+                    takedown_type = first_takedown.get('type', 'unknown')
+                    
+                    if discovery_time and takedown_dt:
+                        hours = calculate_takedown_hours(discovery_time, takedown_dt)
+                        if hours is not None:
+                            takedown_hours.append(hours)
+                            takedown_by_reason[takedown_type].append(hours)
+    
+    print(f"\n[+] Total domaines traités: {count}")
     
     # Calculs statistiques
     stats = {
-        'total': len(domains),
+        'total': count,
         'aging': {
             'count': len(aging_days),
             'mean': statistics.mean(aging_days) if aging_days else 0,
@@ -174,9 +172,9 @@ def analyze_domains(filepath: Path) -> Dict:
             'q3': statistics.quantiles(aging_days, n=4)[2] if len(aging_days) >= 2 else 0,
             'values': aging_days
         },
-        'sources': Counter(sources),
-        'targets': Counter(targets),
-        'tlds': Counter(tlds),
+        'sources': sources,
+        'targets': targets,
+        'tlds': tlds,
         'takedown': {
             'count': len(takedown_hours),
             'mean': statistics.mean(takedown_hours) if takedown_hours else 0,
@@ -412,8 +410,11 @@ def generate_report(stats: Dict, filepath: Path) -> None:
         else:
             f.write(f"⚠ {median_days:.1f} jours médiane = vieillissement significatif\n")
         
-        q75_pct = sum(1 for d in stats['aging']['values'] if d <= 5) / len(stats['aging']['values']) * 100
-        f.write(f"✓ {q75_pct:.0f}% des domaines utilisés en ≤5 jours\n\n")
+        if stats['aging']['values']:
+            q75_pct = sum(1 for d in stats['aging']['values'] if d <= 5) / len(stats['aging']['values']) * 100
+            f.write(f"✓ {q75_pct:.0f}% des domaines utilisés en ≤5 jours\n\n")
+        else:
+            f.write("⚠ Pas de données de vieillissement disponibles\n\n")
         
         # Hypothèse 2
         f.write("HYPOTHÈSE 2: PATTERNS D'ATTAQUE\n")
@@ -471,12 +472,11 @@ def generate_report(stats: Dict, filepath: Path) -> None:
 
 def main():
     """Point d'entrée principal."""
-    # Trouver le fichier le plus récent
-    malicious_files = list(RESULTS_DIR.glob('malicious_domains_takedown_whois_sample_*.jsonl'))
+    # Trouver le fichier le plus récent (priorité au fichier full s'il existe)
+    malicious_files = list(RESULTS_DIR.glob('malicious_domains_*.jsonl'))
     
     if not malicious_files:
-        print("[!] Aucun fichier malicious_domains_takedown_whois_full_*.jsonl trouvé")
-        print(f"[!] Recherche dans: {RESULTS_DIR}")
+        print(f"[!] Aucun fichier malicious_domains_*.jsonl trouvé dans {RESULTS_DIR}")
         return
     
     # Prendre le plus récent
