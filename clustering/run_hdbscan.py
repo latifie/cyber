@@ -1,4 +1,5 @@
 import argparse
+import warnings
 import joblib
 import pandas as pd
 import hdbscan
@@ -106,9 +107,20 @@ def run_clustering(input_file: Path, output_prefix: str, min_cluster_size: int, 
 
     print(f"[+] Sparse Matrix Shape: {X_sparse.shape}")
 
-    print("[+] Reducing dimensions with TruncatedSVD (128 components)...")
-    svd = TruncatedSVD(n_components=128, random_state=42)
-    X_final = svd.fit_transform(X_sparse)
+    # Check for zero variance (degenerate matrix) before SVD
+    # full_var = sum of squared norms of rows; if 0, SVD explained_variance_ratio_ would divide by zero
+    full_var = float(X_sparse.power(2).sum())
+    if full_var == 0:
+        print("[!] Warning: matrix has zero variance. Skipping TruncatedSVD — using raw sparse features (first 128 cols).")
+        n_cols = min(128, X_sparse.shape[1])
+        X_final = np.asarray(X_sparse[:, :n_cols].todense(), dtype=np.float32)
+    else:
+        n_components = min(128, X_sparse.shape[0] - 1, X_sparse.shape[1] - 1)
+        print(f"[+] Reducing dimensions with TruncatedSVD ({n_components} components)...")
+        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            X_final = svd.fit_transform(X_sparse)
 
     del X_sparse
     gc.collect()
