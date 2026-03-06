@@ -108,10 +108,10 @@ def process_batch(batch_raw, vectorizer):
 # ---------------------------------------------------------------------------
 
 def run_clustering(input_file: Path, output_prefix: str, min_cluster_size: int, is_sample: bool,
-                   batch_size: int = 50000, n_jobs: int = -1, n_features_hash: int = 16,
-                   n_components: int = 128, no_cache: bool = False):
-    print(f"[+] Processing {input_file} (batch={batch_size}, n_jobs={n_jobs}, "
-          f"n_features_hash={n_features_hash}, svd_components={n_components})...")
+                   batch_size: int = 10000, n_jobs: int = -1, n_features_hash: int = 16,
+                   n_components: int = 128, no_cache: bool = False, vectorize_jobs: int = 4):
+    print(f"[+] Processing {input_file} (batch={batch_size}, vectorize_jobs={vectorize_jobs}, "
+          f"hdbscan_jobs={n_jobs}, n_features_hash={n_features_hash}, svd_components={n_components})...")
 
     # --- Cache check ---
     cache_key = compute_cache_key(input_file, n_features_hash, n_components)
@@ -139,11 +139,11 @@ def run_clustering(input_file: Path, output_prefix: str, min_cluster_size: int, 
             return
 
         # --- PASS 2: Parallel extract + vectorize ---
-        print(f"[+] Pass 2: Parallel vectorization (n_jobs={n_jobs})...")
+        print(f"[+] Pass 2: Parallel vectorization (vectorize_jobs={vectorize_jobs}, batch={batch_size})...")
         vectorizer = DomainVectorizer(n_features_hash=n_features_hash)
         stream_pass2 = parse_jsonl_stream(input_file)
 
-        results = joblib.Parallel(n_jobs=n_jobs, prefer="threads", verbose=1)(
+        results = joblib.Parallel(n_jobs=vectorize_jobs, prefer="threads", verbose=1)(
             joblib.delayed(process_batch)(batch_raw, vectorizer)
             for batch_raw in batched(stream_pass2, batch_size)
         )
@@ -237,8 +237,9 @@ def main():
     parser.add_argument("--input", type=str, help="Input JSONL file path")
     parser.add_argument("--sample", action="store_true", help="Use default sample file")
     parser.add_argument("--min-size", type=int, default=5, help="HDBSCAN min_cluster_size")
-    parser.add_argument("--batch-size", type=int, default=50000, help="Batch size for processing")
-    parser.add_argument("--n-jobs", type=int, default=-1, help="Number of parallel jobs (-1 = all CPUs)")
+    parser.add_argument("--batch-size", type=int, default=10000, help="Batch size for processing (default: 10000)")
+    parser.add_argument("--n-jobs", type=int, default=-1, help="Parallel jobs for HDBSCAN (-1 = all CPUs)")
+    parser.add_argument("--vectorize-jobs", type=int, default=4, help="Parallel jobs for vectorization (default: 4, lower = less RAM)")
     parser.add_argument("--n-features-hash", type=int, default=16, help="FeatureHasher exponent (2^N features)")
     parser.add_argument("--svd-components", type=int, default=128, help="TruncatedSVD output dimensions")
     parser.add_argument("--no-cache", action="store_true", help="Force recompute even if cache exists")
@@ -261,7 +262,8 @@ def main():
 
     run_clustering(
         fpath, "malicious_campaigns_clusters", args.min_size, is_sample,
-        args.batch_size, args.n_jobs, args.n_features_hash, args.svd_components, args.no_cache
+        args.batch_size, args.n_jobs, args.n_features_hash, args.svd_components,
+        args.no_cache, args.vectorize_jobs
     )
 
 
