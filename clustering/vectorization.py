@@ -23,7 +23,7 @@ class DomainVectorizer:
         """
         pass
         
-    def transform(self, df: pd.DataFrame) -> np.ndarray:
+    def transform(self, df: pd.DataFrame):
         """
         Transforms the dataframe into a numerical matrix.
         Combines categorical features into hashed vectors.
@@ -49,6 +49,6 @@ class DomainVectorizer:
                 
             raw_features.append(feats)
             
-        # Hash features to sparse matrix, then dense float32 array
-        X = self.hasher.transform(raw_features).toarray().astype(np.float32)
+        # Hash features to sparse matrix (cast to float32 for TruncatedSVD later)
+        X = self.hasher.transform(raw_features).astype(np.float32)
         return X
