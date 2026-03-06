@@ -3,7 +3,7 @@ import hashlib
 import warnings
 import joblib
 import pandas as pd
-import hdbscan
+from sklearn.cluster import HDBSCAN
 import numpy as np
 import scipy.sparse as sp
 from sklearn.decomposition import TruncatedSVD
@@ -197,10 +197,10 @@ def run_clustering(input_file: Path, output_prefix: str, min_cluster_size: int, 
 
     # --- Clustering ---
     print(f"[+] Running HDBSCAN (min_cluster_size={min_cluster_size})...")
-    clusterer = hdbscan.HDBSCAN(
+    clusterer = HDBSCAN(
         min_cluster_size=min_cluster_size,
         min_samples=1,
-        core_dist_n_jobs=-1
+        n_jobs=-1  # tous les CPUs
     )
     clusterer.fit(X_final)
 
