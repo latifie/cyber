@@ -475,7 +475,7 @@ def main():
     malicious_files = list(RESULTS_DIR.glob('malicious_domains_takedown_whois_sample_*.jsonl'))
     
     if not malicious_files:
-        print("[!] Aucun fichier malicious_domains_takedown_whois_sample_*.jsonl trouvé")
+        print("[!] Aucun fichier malicious_domains_takedown_whois_full_*.jsonl trouvé")
         print(f"[!] Recherche dans: {RESULTS_DIR}")
         return
     
