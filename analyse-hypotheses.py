@@ -249,8 +249,8 @@ def plot_aging_analysis(stats: Dict) -> None:
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(GRAPHS_DIR / 'hypothesis1_aging.png', dpi=300, bbox_inches='tight')
-    print(f"[✓] Graphique sauvegardé: hypothesis1_aging.png")
+    plt.savefig(GRAPHS_DIR / 'hypothesis1_aging_full.png', dpi=300, bbox_inches='tight')
+    print(f"[✓] Graphique sauvegardé: hypothesis1_aging_full.png")
     plt.close()
 
 
@@ -299,8 +299,8 @@ def plot_attack_patterns(stats: Dict) -> None:
         ax.grid(True, alpha=0.3, axis='y')
     
     plt.tight_layout()
-    plt.savefig(GRAPHS_DIR / 'hypothesis2_patterns.png', dpi=300, bbox_inches='tight')
-    print(f"[✓] Graphique sauvegardé: hypothesis2_patterns.png")
+    plt.savefig(GRAPHS_DIR / 'hypothesis2_patterns_full.png', dpi=300, bbox_inches='tight')
+    print(f"[✓] Graphique sauvegardé: hypothesis2_patterns_full.png")
     plt.close()
 
 
@@ -366,8 +366,8 @@ def plot_takedown_analysis(stats: Dict) -> None:
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(GRAPHS_DIR / 'hypothesis3_takedown.png', dpi=300, bbox_inches='tight')
-    print(f"[✓] Graphique sauvegardé: hypothesis3_takedown.png")
+    plt.savefig(GRAPHS_DIR / 'hypothesis3_takedown_full.png', dpi=300, bbox_inches='tight')
+    print(f"[✓] Graphique sauvegardé: hypothesis3_takedown_full.png")
     plt.close()
 
 
