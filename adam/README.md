@@ -93,3 +93,49 @@ Extraction de l'année au moment de `discovery_time`. On calcule la médiane du 
 * **Ch 3 / 4 : Infrastructure Prep** (`boxplot_ips_avant_attaque.png`, `boxplot_versions_html_avant.png`) : Les Sleepers subissent-ils plus de changements de DNS (`unique IPs before attack`) pendant leur enfance ?
 * **Ch 7 / Cl 6 : LifeSpan/Durée opérationnelle** (`courbe_survie_vs_age.png`) : Plus le domaine est vieux au moment de l'attaque (`aging_time`), plus il devrait échapper longtemps aux défenses, augmentant de fait le temps de survie opérationnelle (`uptime_dur`) post-attaque.
 * **Ch 9 : Expiration Stratégique** (`ch9_expiration_gap.png`) : Formule `Expiration - Attack Time`. Met en exergue l'attaque de type "Burn After Use" (les attaquants utilisent le domaine massivement alors qu'il s'apprête à expirer dans moins de 30 jours, optimisant les coûts d'achat).
+
+---
+
+## 8. Analyses (Wave 2 : Tempo, Lexique et ROI)
+
+Cette section regroupe des analyses avancées visant à muscler la dimension "recherche" du papier. Les graphiques sont générés par `generate_sophisticated_graphs.py`.
+
+### A. Le "Weekend Gap" et le Tempo Opérationnel (`soph_A_weekend_gap.png`)
+**Hypothèse :** Les attaquants privilégient les fenêtres où les défenses (SOC) sont réduites (weekend/lundi matin) pour lancer leurs actifs les plus coûteux (Sleepers).
+
+### B. Crédibilité Lexicale vs Âge (`soph_B_lexical_length.png`)
+**Hypothèse :** Les domaines âgés (plus chers à acquérir/maintenir) investissent dans la crédibilité avec des noms courts et mémorables, contrairement aux Sprinters souvent longs et descriptifs.
+
+### C. Stratégie TLD et Coûts d'Acquisition (`soph_C_tld_strategy.png`)
+**Hypothèse :** Les Sprinters inondent les TLD "Low-Cost" (.top, .xyz, .online) tandis que les Sleepers privilégient les extensions "Legacy" (.com, .net) pour asseoir leur réputation.
+
+### D. Saisonnalité Mensuelle (`soph_D_monthly_seasonality.png`)
+**Hypothèse :** Identification de vagues d'attaques opportunistes liées au calendrier annuel, segmentées par maturité du domaine.
+
+### E. ROI de l'Incubation : Survie Médiane (`soph_E_survival_roi.png`)
+**Hypothèse :** Mesure concrète de l'utilité du vieillissement. Un "Sleeper" offre-t-il statistiquement un temps de vie opérationnel (avant Takedown) supérieur aux autres catégories ?
+
+---
+
+## 9. Recommandations pour le passage à l'échelle (21 Go)
+Pour traiter le dataset complet de 21 Go, le script utilise :
+- Une lecture en **streaming** (ligne par ligne) pour ne pas saturer la RAM.
+- Un typage **Categorical** pour les colonnes répétitives (TLDs, Clusters).
+- Une analyse asynchrone des blocs JSON.
+
+---
+
+## 10. Annexes et Notes Méthodologiques
+
+> [!IMPORTANT]
+> **L'Angle Mort de la Threat Intel :** Nos analyses ont démontré que les données historiques (DNS/HTML) sont souvent collectées *après* la détection. Il est donc normal que les métriques de "warm-up" pré-attaque soient à zéro sur les échantillons. C'est une limite intrinsèque des sources de signalement passives.
+
+---
+## 11. Exécution
+
+Les scripts d'analyse implémentent ces vérifications sur l'échantillon de données :
+
+```bash
+venv/bin/python adam/generate_adam_graphs.py
+venv/bin/python adam/generate_sophisticated_graphs.py
+```
