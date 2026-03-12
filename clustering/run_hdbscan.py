@@ -12,6 +12,16 @@ from pathlib import Path
 from datetime import datetime
 from itertools import islice
 
+# GPU support (cuML) — optional, falls back to sklearn CPU
+GPU_AVAILABLE = False
+try:
+    import cupy as cp
+    from cuml.cluster import HDBSCAN as cuHDBSCAN
+    GPU_AVAILABLE = True
+    print("[GPU] cuML detected — GPU acceleration available.")
+except ImportError:
+    pass
+
 # Local imports
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
@@ -109,9 +119,11 @@ def process_batch(batch_raw, vectorizer):
 
 def run_clustering(input_file: Path, output_prefix: str, min_cluster_size: int, is_sample: bool,
                    batch_size: int = 10000, n_jobs: int = -1, n_features_hash: int = 16,
-                   n_components: int = 128, no_cache: bool = False, vectorize_jobs: int = 4):
+                   n_components: int = 128, no_cache: bool = False, vectorize_jobs: int = 4,
+                   use_gpu: bool = False):
+    device = "GPU (cuML)" if (use_gpu and GPU_AVAILABLE) else "CPU (sklearn)"
     print(f"[+] Processing {input_file} (batch={batch_size}, vectorize_jobs={vectorize_jobs}, "
-          f"hdbscan_jobs={n_jobs}, n_features_hash={n_features_hash}, svd_components={n_components})...")
+          f"hdbscan_jobs={n_jobs}, n_features_hash={n_features_hash}, svd_components={n_components}, device={device})...")
 
     # --- Cache check ---
     cache_key = compute_cache_key(input_file, n_features_hash, n_components)
@@ -196,18 +208,38 @@ def run_clustering(input_file: Path, output_prefix: str, min_cluster_size: int, 
             save_cache(cache_key, X_final, df_meta)
 
     # --- Clustering ---
-    print(f"[+] Running HDBSCAN (min_cluster_size={min_cluster_size})...")
-    clusterer = HDBSCAN(
-        min_cluster_size=min_cluster_size,
-        min_samples=1,
-        n_jobs=-1  # tous les CPUs
-    )
-    clusterer.fit(X_final)
+    t0 = datetime.now()
+    if use_gpu and GPU_AVAILABLE:
+        print(f"[+] Running HDBSCAN on GPU (cuML) with min_cluster_size={min_cluster_size}...")
+        try:
+            X_gpu = cp.asarray(X_final)
+            clusterer = cuHDBSCAN(
+                min_cluster_size=min_cluster_size,
+                min_samples=1,
+            )
+            clusterer.fit(X_gpu)
+            labels = cp.asnumpy(clusterer.labels_)
+            del X_gpu
+            cp.get_default_memory_pool().free_all_blocks()
+        except Exception as e:
+            print(f"[!] GPU HDBSCAN failed ({e}), falling back to CPU...")
+            clusterer = HDBSCAN(min_cluster_size=min_cluster_size, min_samples=1, n_jobs=-1)
+            clusterer.fit(X_final)
+            labels = clusterer.labels_
+    else:
+        print(f"[+] Running HDBSCAN on CPU (sklearn) with min_cluster_size={min_cluster_size}...")
+        clusterer = HDBSCAN(
+            min_cluster_size=min_cluster_size,
+            min_samples=1,
+            n_jobs=-1
+        )
+        clusterer.fit(X_final)
+        labels = clusterer.labels_
 
-    labels = clusterer.labels_
+    elapsed = (datetime.now() - t0).total_seconds()
     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
     n_noise = list(labels).count(-1)
-    print(f"[+] Clustering done. Found {n_clusters} clusters. {n_noise} noise points.")
+    print(f"[+] Clustering done in {elapsed:.1f}s. Found {n_clusters} clusters. {n_noise} noise points.")
 
     # --- Save Results ---
     print("[+] Saving results...")
@@ -243,6 +275,8 @@ def main():
     parser.add_argument("--n-features-hash", type=int, default=16, help="FeatureHasher exponent (2^N features)")
     parser.add_argument("--svd-components", type=int, default=128, help="TruncatedSVD output dimensions")
     parser.add_argument("--no-cache", action="store_true", help="Force recompute even if cache exists")
+    parser.add_argument("--gpu", action="store_true",
+                        help="Use GPU (cuML) for HDBSCAN — requires cuml-cu12 installed.")
 
     args = parser.parse_args()
 
@@ -263,7 +297,7 @@ def main():
     run_clustering(
         fpath, "malicious_campaigns_clusters", args.min_size, is_sample,
         args.batch_size, args.n_jobs, args.n_features_hash, args.svd_components,
-        args.no_cache, args.vectorize_jobs
+        args.no_cache, args.vectorize_jobs, use_gpu=args.gpu
     )
 
 
