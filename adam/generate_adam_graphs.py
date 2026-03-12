@@ -10,6 +10,10 @@ import pandas as pd
 import warnings
 warnings.filterwarnings('ignore')
 
+def get_tld(rd):
+    if not rd or '.' not in rd: return "unknown"
+    return rd.split('.')[-1].lower()
+
 def parse_date(date_str):
     if not date_str: return None
     try:
@@ -104,6 +108,15 @@ def main():
                 filter_stats["neg_uptime_dur"] += 1
                 uptime_dur = None # Ignore negative survival values
             
+            # Identify Clusters
+            cluster = "Sleeper (>30j)"
+            if aging_time <= 1: cluster = "Immédiat (<1j)"
+            elif aging_time <= 7: cluster = "Rapide (1-7j)"
+            elif aging_time <= 30: cluster = "Moyen (7-30j)"
+            
+            rd = rec.get("rd", "unknown")
+            tld = get_tld(rd)
+            
             ip_changes = 0
             unique_ips_before = set()
             html_changes_count = 0
@@ -154,8 +167,10 @@ def main():
             year_discovery = discovery.year
             
             records.append({
-                "rd": rec.get("rd", "unknown"),
+                "rd": rd,
+                "tld": tld,
                 "aging_time": aging_time,
+                "aging_cluster": cluster,
                 "update_delay": update_delay,
                 "expiration_gap": expiration_gap,
                 "uptime_dur": uptime_dur,
@@ -166,11 +181,17 @@ def main():
                 "dns_changes": dns_changes, 
                 "has_pre_attack_changes": has_pre_attack_changes,
                 "year": year_discovery,
+                "month": discovery.month,
+                "weekday": discovery.strftime("%A"),
+                "rd_len": len(rd),
                 "events": timeline_events,
                 "content_versions": html_changes_count + 1 if last_html else 0
             })
             
     df = pd.DataFrame(records)
+    # Optimisation mémoire des types
+    df["aging_cluster"] = pd.Categorical(df["aging_cluster"], categories=["Immédiat (<1j)", "Rapide (1-7j)", "Moyen (7-30j)", "Sleeper (>30j)"], ordered=True)
+    
     print(f"Total domains processed: {total_processed}")
     print(f"Total valid domains in DataFrame: {len(df)}")
     print(f"Diagnostics: {filter_stats}")
@@ -183,7 +204,7 @@ def main():
     plt.title("Thème 1: Distribution de l'Âge des Domaines au Moment de l'Attaque")
     plt.xlabel("Temps de Vieillissement (jours, échelle log)")
     plt.ylabel("Nombre de domaines")
-    plt.savefig(out_dir / "dist_age_attaque_log.png", dpi=300, bbox_inches='tight')
+    plt.savefig(out_dir / "01_distribution_age_log.png", dpi=300, bbox_inches='tight')
     plt.close()
     
     plt.figure()
@@ -192,7 +213,7 @@ def main():
     plt.xlabel("Temps de Vieillissement (jours)")
     plt.ylabel("Proportion Cumulée")
     plt.xlim(0, 1000) # zoom on the first 3 years
-    plt.savefig(out_dir / "cdf_temps_incubation.png", dpi=300, bbox_inches='tight')
+    plt.savefig(out_dir / "02_proportion_cumulee_age.png", dpi=300, bbox_inches='tight')
     plt.close()
 
     # ---------------------------------------------
@@ -209,7 +230,7 @@ def main():
     plt.yscale('symlog')
     plt.xscale('log')
     plt.axhline(0, color='r', linestyle='--')
-    plt.savefig(out_dir / "nuage_maj_vs_age.png", dpi=300, bbox_inches='tight')
+    plt.savefig(out_dir / "03_maj_whois_vs_age.png", dpi=300, bbox_inches='tight')
     plt.close()
     
     old_domains = df_updates[df_updates["aging_time"] > 180]
@@ -220,7 +241,7 @@ def main():
         plt.xlabel("Délai de Mise à Jour (jours avant l'attaque)")
         plt.ylabel("Nombre de domaines")
         plt.xlim(0, 400) # Start at 0 as per recommendation
-        plt.savefig(out_dir / "dist_maj_sleepers.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "04_dist_maj_sleepers.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # ---------------------------------------------
@@ -237,7 +258,7 @@ def main():
     plt.xlabel("ID IANA du Registrar")
     plt.ylabel("Temps de Vieillissement (jours, échelle log)")
     plt.xticks(rotation=45)
-    plt.savefig(out_dir / "boxplot_age_par_registrar.png", dpi=300, bbox_inches='tight')
+    plt.savefig(out_dir / "05_age_par_registrar.png", dpi=300, bbox_inches='tight')
     plt.close()
 
     # ---------------------------------------------
@@ -259,7 +280,7 @@ def main():
         plt.xticks(rotation=45)
         plt.legend(["Âge Médian", "Âge 90ème Centile"])
         plt.tight_layout()
-        plt.savefig(out_dir / "barres_age_par_marque.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "06_age_par_marque.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # ---------------------------------------------
@@ -284,7 +305,7 @@ def main():
         max_year = int(yearly_median["year"].max())
         plt.xticks(range(min_year, max_year + 1))
         
-        plt.savefig(out_dir / "courbe_evolution_age_par_an.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "07_evolution_annuelle_age.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # ---------------------------------------------
@@ -316,31 +337,27 @@ def main():
         plt.title("Thème 6: Frise Pré-Militarisation (Domaines avec mutations récentes)")
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
-        plt.savefig(out_dir / "frise_chronologique_mutations.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "08_frise_chronologique_mutations.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # ---------------------------------------------
-    # Ch 2: Clustering Aging Strategies
+    # Ch 2: Classification des Stratégies
     # ---------------------------------------------
-    bins = [-1, 1, 7, 30, float('inf')]
-    labels = ["Immédiat (<1j)", "Rapide (1-7j)", "Moyen (7-30j)", "Sleeper (>30j)"]
-    df["aging_cluster"] = pd.cut(df["aging_time"], bins=bins, labels=labels)
-    
     plt.figure(figsize=(8, 6))
-    ax = sns.countplot(data=df, x="aging_cluster", palette="magma", order=labels)
+    ax = sns.countplot(data=df, x="aging_cluster", palette="magma")
     plt.title("Ch 2: Classification des Stratégies de Vieillissement")
     plt.xlabel("Cluster Stratégique")
     plt.ylabel("Nombre de Domaines")
     for p in ax.patches:
         ax.annotate(f"{int(p.get_height())}", (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='bottom')
-    plt.savefig(out_dir / "barres_clusters_strategies.png", dpi=300, bbox_inches='tight')
+    plt.savefig(out_dir / "09_classification_clusters_strategies.png", dpi=300, bbox_inches='tight')
     plt.close()
 
     # Recommendation 1: Removed empty technical boxplots
     pass
 
     # ---------------------------------------------
-    # Ch 7 / Cl 6 : Survival vs Age
+    # Ch 7 / Cl 6 : Survival ROI
     # ---------------------------------------------
     df_surv = df.dropna(subset=["uptime_dur"]).copy()
     if len(df_surv) > 0:
@@ -352,7 +369,7 @@ def main():
         plt.ylabel("Durée de Survie (Uptime) Post-Attaque (heures)")
         plt.xscale("symlog")
         plt.yscale("symlog")
-        plt.savefig(out_dir / "courbe_survie_vs_age.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "10_courbe_survie_vs_age.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # ---------------------------------------------
@@ -367,9 +384,81 @@ def main():
         plt.ylabel("Nombre de domaines")
         plt.xlim(-50, 750)
         plt.axvline(0, color='r', linestyle='--')
-        plt.savefig(out_dir / "ch9_expiration_gap.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "11_expiration_gap_strategique.png", dpi=300, bbox_inches='tight')
         plt.close()
         
+    # -----------------------------------------------------------------
+    # ANALYSES SOPHISTIQUÉES (Wave 2) - Noms explicites en Français
+    # -----------------------------------------------------------------
+    
+    # --- Hypothèse A: Weekend Gap & Tempo Opérationnel ---
+    plt.figure(figsize=(10, 6))
+    days_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    df["strat_group"] = df["aging_cluster"].apply(lambda x: "Sleeper" if "Sleeper" in str(x) else "Sprinter")
+    ax = sns.countplot(data=df, x="weekday", hue="strat_group", order=days_order, palette="coolwarm")
+    plt.title("Hyp. A: Tempo Opérationnel - Jour de l'Attaque (Weekend Gap)")
+    plt.xlabel("Jour de la semaine (Découverte)")
+    plt.ylabel("Nombre d'attaques")
+    plt.xticks(rotation=45)
+    plt.legend(title="Stratégie")
+    plt.tight_layout()
+    plt.savefig(out_dir / "12_analyse_weekend_gap_sprinters_vs_sleepers.png", dpi=300)
+    plt.close()
+
+    # --- Hypothèse B: Similarité lexicale (RD Length) ---
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(data=df, x="rd_len", y="aging_time", hue="aging_cluster", alpha=0.6, palette="viridis")
+    plt.yscale("log")
+    plt.axvline(10, color="red", linestyle="--", alpha=0.5, label="Seuil Crédibilité (10 chars)")
+    plt.title("Hyp. B: Crédibilité Lexicale - Longueur du Nom vs Âge")
+    plt.xlabel("Longueur du Root Domain (caractères)")
+    plt.ylabel("Temps d'incubation (jours, échelle log)")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.savefig(out_dir / "13_correlation_longueur_domaine_vs_age.png", dpi=300)
+    plt.close()
+
+    # --- Hypothèse C: TLD Low-Cost Strategy (Top 10) ---
+    top_tlds = df["tld"].value_counts().nlargest(10).index.tolist()
+    if len(top_tlds) > 0:
+        plt.figure(figsize=(12, 7))
+        tld_dist = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
+        tld_dist_pct = tld_dist.div(tld_dist.sum(axis=1), axis=0) * 100
+        tld_dist_pct.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
+        plt.title("Hyp. C: Stratégie Extensions - Proportion Sprinters vs Sleepers par TLD")
+        plt.ylabel("Pourcentage (%)")
+        plt.xlabel("TLD (Top 10)")
+        plt.axhline(50, color="gray", linestyle="--", alpha=0.5)
+        plt.legend(title="Stratégie")
+        plt.tight_layout()
+        plt.savefig(out_dir / "14_repartition_tld_sprinters_sleepers.png", dpi=300)
+        plt.close()
+
+    # --- Hypothèse D: Saisonnalité et Opportunisme (Monthly) ---
+    plt.figure(figsize=(10, 6))
+    monthly_data = df.groupby(["month", "strat_group"]).size().reset_index(name="count")
+    sns.lineplot(data=monthly_data, x="month", y="count", hue="strat_group", marker="o", linewidth=2.5)
+    plt.title("Hyp. D: Saisonnalité - Volume Mensuel des Attaques")
+    plt.xlabel("Mois de l'année")
+    plt.ylabel("Nombre d'attaques")
+    plt.xticks(range(1, 13))
+    plt.tight_layout()
+    plt.savefig(out_dir / "15_saisonnalite_mensuelle_attaques.png", dpi=300)
+    plt.close()
+
+    # --- Hypothèse E: ROI de Survie (Survival per Cluster) ---
+    plt.figure(figsize=(10, 6))
+    survivors = df.dropna(subset=["uptime_dur"])
+    if not survivors.empty:
+        median_surv = survivors.groupby("aging_cluster")["uptime_dur"].median().reset_index()
+        sns.barplot(data=median_surv, x="aging_cluster", y="uptime_dur", palette="magma")
+        plt.title("Hyp. E: ROI de l'Incubation - Survie Médiane post-attaque")
+        plt.ylabel("Durée de Survie Médiane (Heures)")
+        plt.xlabel("Cluster Stratégique d'Âge")
+        plt.tight_layout()
+        plt.savefig(out_dir / "16_roi_survie_mediane_par_cluster_age.png", dpi=300)
+        plt.close()
+
     print(f"[*] Graphs successfully generated in {out_dir}")
 
 if __name__ == "__main__":

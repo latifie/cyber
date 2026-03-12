@@ -1,141 +1,39 @@
-# Domain Aging Strategy Analysis
+# ADAM : Aging Domain Analysis & Monitoring
 
-Ce document explique les différents graphiques générés, les hypothèses sur lesquelles ils reposent, les métriques extraites et la manière dont ils s'articulent pour répondre à la question centrale : **Quand les attaquants militarisent-ils les domaines nouvellement enregistrés ?**
+Projet de recherche sur la militarisation des noms de domaines : **"Aging domain names: When Do Attackers Weaponize Newly Registered Domains"**.
 
-L'ensemble des graphiques est généré par l'analyse des données JSONL (`malicious_domains_takedown_whois_sample_*.jsonl`), filtrées pour ne conserver que les domaines malveillants identifiés lors de la recherche sur des fraudes au WHOIS.
+## 1. Objectif
+Analyser le temps d'incubation (Aging Time) entre la création d'un domaine (`cd`) et sa découverte en tant qu'entité malveillante (`discovery_time`).
+L'ensemble des analyses est consolidé dans un script unique optimisé pour les fichiers JSONL massifs (21 Go+).
 
-La variable (métrique) centrale du papier est traitée de la manière suivante :
-`aging_time = discovery_time - cd` (où `cd` est la Creation Date issue du WHOIS)
+## 2. Guide des Graphiques Générés
+Les graphiques sont numérotés et nommés de manière explicite pour faciliter l'intégration dans le rapport :
 
----
+### Analyses de Base (Thèmes 1 à 6)
+*   `01_distribution_age_log.png` : Distribution globale de l'âge (échelle log).
+*   `02_proportion_cumulee_age.png` : Proportion cumulée (CDF) de militarisation.
+*   `03_maj_whois_vs_age.png` : Corrélation entre l'âge et la dernière mise à jour WHOIS.
+*   `04_dist_maj_sleepers.png` : Distribution des délais de MAJ pour les domaines anciens (>180j).
+*   `05_age_par_registrar.png` : Comparaison des stratégies par Registrar (Top 15).
+*   `06_age_par_marque.png` : Âge médian vs 90e centile par marque ciblée.
+*   `07_evolution_annuelle_age.png` : Évolution de la maturité des domaines par année.
+*   `08_frise_chronologique_mutations.png` : (Conditionnel) Visualisation des changements IP/HTML pré-attaque.
 
-## 1. L'approche Globale : La distribution du temps d'incubation (Thème 1, Ch 1, Cl 1)
+### Métriques Stratégiques (Compléments)
+*   `09_classification_clusters_strategies.png` : Répartition par clusters (Immédiat, Rapide, Moyen, Sleeper).
+*   `10_courbe_survie_vs_age.png` : Relation entre le temps de vieillissement et la durée de survie (Uptime).
+*   `11_expiration_gap_strategique.png` : Analyse de l'utilisation des domaines juste avant leur expiration.
 
-**Fichiers générés :**
-* `dist_age_attaque_log.png`
-* `cdf_temps_incubation.png`
+### Analyses Sophistiquées (Wave 2)
+*   `12_analyse_weekend_gap_sprinters_vs_sleepers.png` : Tempo opérationnel Sprinters vs Sleepers.
+*   `13_correlation_longueur_domaine_vs_age.png` : Relation entre longueur lexicale et temps d'incubation.
+*   `14_repartition_tld_sprinters_sleepers.png` : Stratégies de choix des extensions (TLD).
+*   `15_saisonnalite_mensuelle_attaques.png` : Volume d'attaques par mois.
+*   `16_roi_survie_mediane_par_cluster_age.png` : Efficacité réelle du vieillissement sur la survie.
 
-**L'hypothèse :** Les attaquants adoptent deux stratégies principales et distinctes : 
-1. Les **Sprinters** (ou Just-in-time domains) qui sont utilisés immédiatement.
-2. Les **Sleepers** (Aged domains) qui sont mis en sommeil pour gagner en confiance (contournement des mécanismes d'anti-Newly Registered Domains). La distribution est donc "Bimodale".
-
-**Méthodologie et Métriques :**
-Nous avons calculé la différence `aging_time` en jours. L'histogramme affiche la densité des domaines avec une échelle logarithmique sur l'axe X pour mieux discerner à la fois la concentration énorme de "Sprinters" dans les premières 24/48h et les vallons des "Sleepers" bien plus tard (ex: 30, 90 ou même 300+ jours).
-La CDF (Cumulative Distribution Function) quant à elle permet d'extraire des percentiles précis ("XX% des domaines sont militarisés en moins de Y jours").
-
----
-
-## 2. Le marqueur de "Réveil" et l'Axe Administratif (Thème 2, Ch 8, Cl 7)
-
-**Fichiers générés :**
-* `nuage_maj_vs_age.png`
-* `dist_maj_sleepers.png`
-
-**L'hypothèse :** Un vieux domaine ne vieillit pas de façon homogène. L'attaque (la militarisation) est précédée d'un événement déclencheur de type cyber-administratif : un changement WHOIS (modification de contact, changement de registrar, etc.). Ce changement d'état est l'indicateur clé du "Réveil".
-
-**Méthodologie et Métriques :**
-Nous calculons `update_delay = discovery_time - ud` (différence entre l'attaque et la dernière mise à jour).
-Le Scatter plot nous permet de chercher une concentration de vieux domaines (`aging_time` élevé) qui présentent un `update_delay` extrêmement réduit (proche de 0). L'histogramme cible exclusivement les "Sleepers" (> 180 jours d'âge) pour voir l'étendue de cet `update_delay`. S'il est massivement bas, cela valide le piratage de vieux domaines (Domain Hijacking) ou le Drop Catching.
-
----
-
-## 3. L'infrastructure et les Registrars (Thème 3, Ch 5, Cl 5)
-
-**Fichiers générés :**
-* `boxplot_age_par_registrar.png`
-
-**L'hypothèse :** Les "Sleepers" coûtent de l'argent (renouvellement) et doivent survivre longtemps sans être audités ni suspendus. Les attaquants concentrent donc stratégiquement leurs "Sleepers" réveillés et rachetés vers des plateformes de registrars qui possèdent des politiques d'Abus peu réactives ou des vérifications de type "Know Your Customer" (KYC) laxistes.
-
-**Méthodologie et Métriques :**
-Nous avons calculé le temps d'incubation (`aging_time`) médian par registrar (`iana_id`) pour le Top 15 des registrars dans les volumes du dataset. Les boîtes à moustaches (Boxplots) démontrent non seulement la médiane mais la variance : un registrar favorisé pour les Sleepers aura une boîte concentrée beaucoup plus haut (sur l'axe Y logarithmique).
-
----
-
-## 4. Ciblage et Valeur de la Marque (Thème 4, Ch 6, Cl 2)
-
-**Fichiers générés :**
-* `barres_age_par_marque.png`
-
-**L'hypothèse :** S'attaquer à "PayPal" ou à une banque demande davantage de sophistication technique pour déjouer les outils de détection antispam et brand protection. Les attaquants choisissent donc d'allouer leurs "Vieux Domaines" coûteux spécifiquement vers ces cibles à haute valeur (High Value Targets), tandis que le phishing "cheap" (Colis postaux, etc.) sera mené avec des "Sprinters".
-
-**Méthodologie et Métriques :**
-Extraction de `metadata.trg` (Target). Le diagramme en barres regroupe les cibles les plus attaquées (par volume) et confronte leur Âge Médian face au 90ème percentile (qui représente la frange des opérations les plus sophistiquées sur cette même marque).
-
----
-
-## 5. L'Évolution Temporelle des Tactiques (Thème 5, Ch 10, Cl 3)
-
-**Fichiers générés :**
-* `courbe_evolution_age_par_an.png`
-
-**L'hypothèse :** On observe une forme de *course aux armements*. À mesure que l'industrie cyber a appliqué des règles sévères (ML) pénalisant pénalement les "Newly Registered Domains", les cybercriminels se sont adaptés et forcent leurs domaines malveillants à attendre de plus en plus longtemps.
-
-**Méthodologie et Métriques :**
-Extraction de l'année au moment de `discovery_time`. On calcule la médiane du `aging_time` par année. S'il y a une pente croissante du graphique de 2018 à 2024, c'est que les attaquants s'adaptent et laissent "incuber" leurs domaines de plus en plus longtemps.
-
----
-
-## 6. Les modifications pré-militarisation et la Frise (Thème 6, Ch 4, Cl 4)
-
-**Fichiers générés :**
-* `frise_chronologique_mutations.png`
-
-**L'hypothèse :** Un "Sleeper" dormant n'a pas d'infrastructure malveillante pointée vers lui lors de sa gestation (Parking Page). La militarisation se signale par une bascule violente et détectable : IP Churning (modification `arec`) ou Hash visuel/code (modification du `html_ssdeep` ou `html_md5`).
-
-**Méthodologie et Métriques :**
-Étude d'un échantillon ciblé de domaines montrant des mutations dans la fenêtre fatidique des 7 jours (`discovery_time - 7 jours`). La frise montre visuellement "Création" ➔ (Très long trou) ➔ IP Change ➔ HTML Change ➔ Attack/Discovery.
-
----
-
-## 7. Autres Variables Complémentaires (Stratégies DNS, Expiration, Takedown)
-
-* **Ch 2 : Stratégie (Clusters)** (`barres_clusters_strategies.png`) : Les domaines sont disrétisés en 4 bacs (Immediate, Fast, Aged, Sleeper) pour dénombrer visuellement quelle catégorie emporte l'avantage quantitatif.
-* **Ch 3 / 4 : Infrastructure Prep** (`boxplot_ips_avant_attaque.png`, `boxplot_versions_html_avant.png`) : Les Sleepers subissent-ils plus de changements de DNS (`unique IPs before attack`) pendant leur enfance ?
-* **Ch 7 / Cl 6 : LifeSpan/Durée opérationnelle** (`courbe_survie_vs_age.png`) : Plus le domaine est vieux au moment de l'attaque (`aging_time`), plus il devrait échapper longtemps aux défenses, augmentant de fait le temps de survie opérationnelle (`uptime_dur`) post-attaque.
-* **Ch 9 : Expiration Stratégique** (`ch9_expiration_gap.png`) : Formule `Expiration - Attack Time`. Met en exergue l'attaque de type "Burn After Use" (les attaquants utilisent le domaine massivement alors qu'il s'apprête à expirer dans moins de 30 jours, optimisant les coûts d'achat).
-
----
-
-## 8. Analyses (Wave 2 : Tempo, Lexique et ROI)
-
-Cette section regroupe des analyses avancées visant à muscler la dimension "recherche" du papier. Les graphiques sont générés par `generate_sophisticated_graphs.py`.
-
-### A. Le "Weekend Gap" et le Tempo Opérationnel (`soph_A_weekend_gap.png`)
-**Hypothèse :** Les attaquants privilégient les fenêtres où les défenses (SOC) sont réduites (weekend/lundi matin) pour lancer leurs actifs les plus coûteux (Sleepers).
-
-### B. Crédibilité Lexicale vs Âge (`soph_B_lexical_length.png`)
-**Hypothèse :** Les domaines âgés (plus chers à acquérir/maintenir) investissent dans la crédibilité avec des noms courts et mémorables, contrairement aux Sprinters souvent longs et descriptifs.
-
-### C. Stratégie TLD et Coûts d'Acquisition (`soph_C_tld_strategy.png`)
-**Hypothèse :** Les Sprinters inondent les TLD "Low-Cost" (.top, .xyz, .online) tandis que les Sleepers privilégient les extensions "Legacy" (.com, .net) pour asseoir leur réputation.
-
-### D. Saisonnalité Mensuelle (`soph_D_monthly_seasonality.png`)
-**Hypothèse :** Identification de vagues d'attaques opportunistes liées au calendrier annuel, segmentées par maturité du domaine.
-
-### E. ROI de l'Incubation : Survie Médiane (`soph_E_survival_roi.png`)
-**Hypothèse :** Mesure concrète de l'utilité du vieillissement. Un "Sleeper" offre-t-il statistiquement un temps de vie opérationnel (avant Takedown) supérieur aux autres catégories ?
-
----
-
-## 9. Recommandations pour le passage à l'échelle (21 Go)
-Pour traiter le dataset complet de 21 Go, le script utilise :
-- Une lecture en **streaming** (ligne par ligne) pour ne pas saturer la RAM.
-- Un typage **Categorical** pour les colonnes répétitives (TLDs, Clusters).
-- Une analyse asynchrone des blocs JSON.
-
----
-
-## 10. Annexes et Notes Méthodologiques
-
-> [!IMPORTANT]
-> **L'Angle Mort de la Threat Intel :** Nos analyses ont démontré que les données historiques (DNS/HTML) sont souvent collectées *après* la détection. Il est donc normal que les métriques de "warm-up" pré-attaque soient à zéro sur les échantillons. C'est une limite intrinsèque des sources de signalement passives.
-
----
-## 11. Exécution
-
-Les scripts d'analyse implémentent ces vérifications sur l'échantillon de données :
+## 3. Optimisation et Exécution
+Le script `generate_adam_graphs.py` utilise le **streaming** pour traiter des fichiers de plus de 21 Go sans saturer la RAM.
 
 ```bash
 venv/bin/python adam/generate_adam_graphs.py
-venv/bin/python adam/generate_sophisticated_graphs.py
 ```
