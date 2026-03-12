@@ -48,12 +48,12 @@ def load_cache(cache_key: str):
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     vectors_path = CACHE_DIR / f"vectors_{cache_key}.npy"
-    meta_path    = CACHE_DIR / f"meta_{cache_key}.parquet"
+    meta_path    = CACHE_DIR / f"meta_{cache_key}.csv.gz"
 
     if vectors_path.exists() and meta_path.exists():
         print(f"[+] Cache HIT (key={cache_key}). Loading vectors from disk...")
         X_final  = np.load(str(vectors_path))
-        df_meta  = pd.read_parquet(str(meta_path))
+        df_meta  = pd.read_csv(str(meta_path))
         return X_final, df_meta
 
     return None, None
@@ -63,10 +63,10 @@ def save_cache(cache_key: str, X_final: np.ndarray, df_meta: pd.DataFrame):
     """Persist X_final and metadata to cache directory."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     vectors_path = CACHE_DIR / f"vectors_{cache_key}.npy"
-    meta_path    = CACHE_DIR / f"meta_{cache_key}.parquet"
+    meta_path    = CACHE_DIR / f"meta_{cache_key}.csv.gz"
 
     np.save(str(vectors_path), X_final)
-    df_meta.to_parquet(str(meta_path), index=False)
+    df_meta.to_csv(str(meta_path), index=False, compression="gzip")
     print(f"[+] Vectors cached to {CACHE_DIR} (key={cache_key})")
 
 

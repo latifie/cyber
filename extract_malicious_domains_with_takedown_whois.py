@@ -47,13 +47,17 @@ def takedown_has_whois(takedown: Optional[Dict]) -> bool:
     return False
 
 
-def extract(sample_mode: bool) -> None:
+def extract(sample_mode: bool, data_dir: Optional[Path] = None) -> None:
     """Extrait les domaines malicieux avec takedown WHOIS ; écrit un JSONL complet."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     mode = "sample" if sample_mode else "full"
     out_path = OUTPUT_DIR / f"malicious_domains_takedown_whois_{mode}_{ts}.jsonl"
 
-    files = iter_uptime_files(sample_mode)
+    if data_dir:
+        files = iter_uptime_files(sample_mode, data_dir=data_dir)
+    else:
+        files = iter_uptime_files(sample_mode)
+    
     if not files:
         print(f"[!] Aucun fichier uptimes trouvé en mode '{mode}'.")
         return
@@ -90,8 +94,15 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
         action="store_true",
         help="Utilise sample_data/uptimes/ au lieu de uptimes/.",
     )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        help="Chemin optionnel vers le dossier contenant le sous-dossier 'uptimes/'.",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
-    extract(sample_mode=args.sample)
+    
+    data_dir_path = Path(args.data_dir) if args.data_dir else None
+    extract(sample_mode=args.sample, data_dir=data_dir_path)
 
 
 if __name__ == "__main__":
