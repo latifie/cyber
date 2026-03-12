@@ -312,22 +312,25 @@ def plot_takedown_analysis(stats: Dict) -> None:
         print("[!] Pas de données de takedown")
         return
     
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
     fig.suptitle('Hypothèse 3: Délai de takedown', fontsize=16, fontweight='bold')
     
-    # 1. Histogramme (heures)
-    ax = axes[0, 0]
-    ax.hist(takedown_hours, bins=30, edgecolor='black', alpha=0.7, color='forestgreen')
-    ax.axvline(stats['takedown']['median'], color='blue', linestyle='--', linewidth=2, 
-               label=f'Médiane: {stats["takedown"]["median"]:.1f}h ({stats["takedown"]["median"]/24:.1f}j)')
-    ax.set_xlabel('Heures entre découverte et takedown')
+    # 1. Distribution jours
+    ax = axes[0]
+    takedown_days = [h/24 for h in takedown_hours]
+    takedown_days_filtered = [d for d in takedown_days if d <= 379] # 1 an et 2 semaines
+    ax.hist(takedown_days_filtered, bins=30, edgecolor='black', alpha=0.7, color='teal')
+    ax.axvline(stats['takedown']['median']/24, color='blue', linestyle='--', linewidth=2,
+               label=f'Médiane: {stats["takedown"]["median"]/24:.1f}j')
+    ax.set_xlabel('Jours entre découverte et takedown')
     ax.set_ylabel('Nombre de domaines')
-    ax.set_title('Distribution du délai de takedown')
+    ax.set_title('Distribution en jours (max 379j)')
+    ax.set_xlim(0, 379)
     ax.legend()
     ax.grid(True, alpha=0.3)
     
     # 2. Par type de takedown
-    ax = axes[0, 1]
+    ax = axes[1]
     takedown_by_reason = stats['takedown']['by_reason']
     if takedown_by_reason:
         reasons = list(takedown_by_reason.keys())
@@ -348,28 +351,17 @@ def plot_takedown_analysis(stats: Dict) -> None:
             ax.text(bar.get_x() + bar.get_width()/2., height,
                    f'n={count}', ha='center', va='bottom', fontsize=9)
     
-    # 3. Distribution jours
-    ax = axes[1, 0]
-    takedown_days = [h/24 for h in takedown_hours]
-    ax.hist(takedown_days, bins=30, edgecolor='black', alpha=0.7, color='teal')
-    ax.axvline(stats['takedown']['median']/24, color='blue', linestyle='--', linewidth=2,
-               label=f'Médiane: {stats["takedown"]["median"]/24:.1f}j')
-    ax.set_xlabel('Jours entre découverte et takedown')
-    ax.set_ylabel('Nombre de domaines')
-    ax.set_title('Distribution en jours')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    # 4. Courbe cumulative
-    ax = axes[1, 1]
-    sorted_hours = sorted(takedown_hours)
-    cumulative = [(i+1)/len(sorted_hours)*100 for i in range(len(sorted_hours))]
-    ax.plot(sorted_hours, cumulative, linewidth=2, color='darkgreen')
+    # 3. Courbe cumulative
+    ax = axes[2]
+    sorted_days = sorted(takedown_days)
+    cumulative = [(i+1)/len(sorted_days)*100 for i in range(len(sorted_days))]
+    ax.plot(sorted_days, cumulative, linewidth=2, color='darkgreen')
     ax.axhline(50, color='blue', linestyle='--', alpha=0.5, label='Médiane')
     ax.axhline(75, color='orange', linestyle='--', alpha=0.5, label='Q3')
-    ax.set_xlabel('Heures')
+    ax.set_xlabel('Jours')
     ax.set_ylabel('Pourcentage cumulé (%)')
     ax.set_title('Distribution cumulative')
+    ax.set_xlim(0, 379)
     ax.legend()
     ax.grid(True, alpha=0.3)
     
