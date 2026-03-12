@@ -52,9 +52,13 @@ def main():
 
     total_processed = 0
     records = []
+    sample_timeline = []
+    
     with open(latest_file, 'r', encoding='utf-8') as f:
         for line in f:
             total_processed += 1
+            if total_processed % 5000 == 0:
+                print(f"[~] ... {total_processed:,} domaines analysés ...")
             if not line.strip(): continue
             try:
                 rec = json.loads(line)
@@ -166,6 +170,7 @@ def main():
             dns_changes = len(unique_ips_before)
             year_discovery = discovery.year
             
+            # Ajout sans le champ 'events' pour préserver la RAM
             records.append({
                 "rd": rd,
                 "tld": tld,
@@ -184,9 +189,15 @@ def main():
                 "month": discovery.month,
                 "weekday": discovery.strftime("%A"),
                 "rd_len": len(rd),
-                "events": timeline_events,
                 "content_versions": html_changes_count + 1 if last_html else 0
             })
+            
+            # On sauvegarde juste 7 exemples complets en RAM pour la Frise Chronologique
+            if has_pre_attack_changes and len(sample_timeline) < 7:
+                sample_timeline.append({
+                    "aging_time": aging_time,
+                    "events": timeline_events
+                })
             
     df = pd.DataFrame(records)
     # Optimisation mémoire des types
@@ -311,15 +322,6 @@ def main():
     # ---------------------------------------------
     # Thème 6 / Ch 4 / Cl 4 : Pre-weaponization signs
     # ---------------------------------------------
-    df_events = df.dropna(subset=["events"]).copy()
-    sample_timeline = []
-    
-    # We take domains that have actually shown pre-attack modifications
-    df_changes = df_events[df_events["has_pre_attack_changes"] == True]
-    
-    for i, row in df_changes.head(7).iterrows():
-        sample_timeline.append(row)
-            
     if len(sample_timeline) > 0:
         plt.figure(figsize=(10, 6))
         for i, row in enumerate(sample_timeline):
