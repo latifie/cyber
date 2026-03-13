@@ -29,12 +29,6 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 SAMPLE_DATA_DIR = DATA_DIR / "sample_data"
 
 
-
-
-
-
-
-
 def takedown_has_whois(takedown: Optional[Dict]) -> bool:
     """True si le champ takedown indique un takedown WHOIS (clé whois / reason / type)."""
     if not takedown or not isinstance(takedown, dict):
