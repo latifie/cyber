@@ -205,6 +205,7 @@ def main():
                 "has_pre_attack_changes": has_pre_attack_changes,
                 "year": year_discovery,
                 "month": discovery.month,
+                "year_month": discovery.strftime("%Y-%m"),
                 "weekday": discovery.strftime("%A"),
                 "rd_len": len(rd),
                 "content_versions": html_changes_count + 1 if last_html else 0
@@ -231,10 +232,6 @@ def main():
     print(f"Total domains processed: {total_processed}")
     print(f"Total valid domains in DataFrame: {len(df)}")
     print(f"Diagnostics: {filter_stats}")
-    
-    # =========================================================================
-    # PARTIE 1 : ANCIENS GRAPHIQUES (CONSERVÉS EXACTEMENT COMME AVANT)
-    # =========================================================================
     
     plt.figure()
     sns.histplot(df["aging_time"], bins=50, kde=True, log_scale=True, color="#3498db")
@@ -368,7 +365,7 @@ def main():
     df_exp = df.dropna(subset=["expiration_gap"])
     if len(df_exp) > 0:
         plt.figure()
-        sns.histplot(df_exp["expiration_gap"], bins=40, kde=True, color="#d35400")
+        sns.histplot(df_exp["expiration_gap"], bins=100, kde=True, color="#d35400")
         plt.title("Ch 9: Distribution de l'Écart avant Expiration")
         plt.xlabel("Jours Séparant la Découverte et l'Expiration")
         plt.ylabel("Nombre de domaines")
@@ -438,9 +435,6 @@ def main():
         plt.savefig(out_dir / "16_roi_survie_mediane_par_cluster_age.png", dpi=300)
         plt.close()
 
-    # =========================================================================
-    # PARTIE 2 : GRAPHIQUES "FIXED" (LES VERSIONS AMÉLIORÉES)
-    # =========================================================================
     print("[*] Génération des graphiques FIXED et des nouvelles hypothèses...")
 
     # 02 Fixed : CDF avec axe Logarithmique
@@ -510,12 +504,8 @@ def main():
         plt.tight_layout()
         plt.savefig(out_dir / "14_repartition_tld_sprinters_sleepers_fixed.png", dpi=300)
         plt.close()
-
-    # =========================================================================
-    # PARTIE 3 : NOUVELLES HYPOTHÈSES (WAVE 3)
-    # =========================================================================
     
-    # 17. NOUVEAU - Idée A : Ratio Stratégique des Registrars
+    # 17. Ratio Stratégique des Registrars
     top_10_regs = df[df["iana_id"] != "None"]["registrar_name"].value_counts().nlargest(10).index.tolist()
     if len(top_10_regs) > 0:
         plt.figure(figsize=(12, 7))
@@ -534,7 +524,7 @@ def main():
         plt.savefig(out_dir / "17_ratio_strategique_registrars.png", dpi=300)
         plt.close()
 
-    # 18. NOUVEAU - Idée B : Complexité d'Infrastructure (Boxplot IPs)
+    # 18. Complexité d'Infrastructure (Boxplot IPs)
     plt.figure(figsize=(10, 6))
     sns.boxplot(data=df, x="aging_cluster", y="dns_changes", palette="magma")
     plt.yscale("symlog")
@@ -545,7 +535,7 @@ def main():
     plt.savefig(out_dir / "18_complexite_infrastructure_ips.png", dpi=300)
     plt.close()
 
-    # 19. NOUVEAU - Idée C : La preuve du Drop Catching (Pie Chart)
+    # 19. La preuve du Drop Catching (Pie Chart)
     old_sleepers = df[df["aging_time"] > 365].copy()
     if not old_sleepers.empty:
         def categorize_drop(ud_val):
@@ -561,6 +551,37 @@ def main():
         plt.title("Idée C: Preuve du 'Drop Catching' (Domaines > 1 an)\nOnt-ils été mis à jour administrativement juste avant l'attaque ?")
         plt.savefig(out_dir / "19_preuve_drop_catching_pie.png", dpi=300)
         plt.close()
+
+    # 20. Évolution Temporelle Mensuelle Globale 
+    plt.figure(figsize=(14, 6))
+    monthly_evolution = df.groupby("year_month")["aging_time"].median().reset_index()
+    monthly_evolution = monthly_evolution.sort_values("year_month")
+    
+    sns.lineplot(data=monthly_evolution, x="year_month", y="aging_time", marker="o", color="#8e44ad", linewidth=2)
+    plt.title("Idée D: Évolution Temporelle Détaillée (Mensuelle Globale) de l'Âge Médian")
+    plt.xlabel("Mois de Découverte (Année-Mois)")
+    plt.ylabel("Temps de Vieillissement Médian (jours)")
+    plt.xticks(rotation=90, fontsize=8) 
+    plt.tight_layout()
+    plt.savefig(out_dir / "20_evolution_mensuelle_globale_age.png", dpi=300)
+    plt.close()
+
+    # 21. Évolution Mensuelle Fractionnée par Année
+    unique_years = sorted(df["year"].unique())
+    for y in unique_years:
+        df_year = df[df["year"] == y]
+        # On évite de faire un graphe s'il y a trop peu de données pour une année donnée
+        if len(df_year) > 100: 
+            plt.figure(figsize=(10, 6))
+            monthly_year_evol = df_year.groupby("month")["aging_time"].median().reset_index()
+            sns.lineplot(data=monthly_year_evol, x="month", y="aging_time", marker="o", color="#c0392b", linewidth=2)
+            plt.title(f"Évolution Mensuelle de l'Âge Médian pour l'année {y}")
+            plt.xlabel("Mois")
+            plt.ylabel("Temps de Vieillissement Médian (jours)")
+            plt.xticks(range(1, 13))
+            plt.tight_layout()
+            plt.savefig(out_dir / f"21_evolution_mensuelle_{y}_age.png", dpi=300)
+            plt.close()
 
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
 
