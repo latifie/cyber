@@ -43,10 +43,8 @@ def main():
     if csv_path.exists():
         try:
             reg_df = pd.read_csv(csv_path)
-            # Nettoyage rapide des colonnes au cas où
             reg_df.columns = reg_df.columns.str.strip().str.replace('"', '')
             if "ID" in reg_df.columns and "Registrar Name" in reg_df.columns:
-                # Création d'un dictionnaire { "146": "GoDaddy", ... }
                 registrar_map = reg_df.set_index("ID")["Registrar Name"].astype(str).to_dict()
                 registrar_map = {str(k).strip(): v for k, v in registrar_map.items()}
                 print(f"[*] Fichier CSV des Registrars chargé : {len(registrar_map)} noms trouvés.")
@@ -226,13 +224,15 @@ def main():
     df["aging_cluster"] = pd.Categorical(df["aging_cluster"], categories=["Immédiat (<1j)", "Rapide (1-7j)", "Moyen (7-30j)", "Sleeper (>30j)"], ordered=True)
     df["strat_group"] = df["aging_cluster"].apply(lambda x: "Sleeper" if "Sleeper" in str(x) else "Sprinter")
     
-    # Mapping IANA ID vers Noms de Registrars via le CSV
     df["registrar_name"] = df["iana_id"].map(registrar_map).fillna("ID: " + df["iana_id"].astype(str))
     
     print(f"Total domains processed: {total_processed}")
     print(f"Total valid domains in DataFrame: {len(df)}")
     print(f"Diagnostics: {filter_stats}")
-    
+    print(f"[*] Génération des graphiques...")
+
+
+    # 01. Distribution globale de l'âge (Log scale)
     plt.figure()
     sns.histplot(df["aging_time"], bins=50, kde=True, log_scale=True, color="#3498db")
     plt.title("Thème 1: Distribution de l'Âge des Domaines au Moment de l'Attaque")
@@ -240,28 +240,33 @@ def main():
     plt.ylabel("Nombre de domaines")
     plt.savefig(out_dir / "01_distribution_age_log.png", dpi=300, bbox_inches='tight')
     plt.close()
-    
+
+    # 02. CDF du Temps de Vieillissement (Échelle Log)
+    df_valid_age = df[df["aging_time"] > 0]
     plt.figure()
-    sns.ecdfplot(data=df, x="aging_time", color="#e74c3c")
-    plt.title("Thème 1: CDF du Temps de Vieillissement des Domaines")
-    plt.xlabel("Temps de Vieillissement (jours)")
+    sns.ecdfplot(data=df_valid_age, x="aging_time", color="#e74c3c")
+    plt.title("Thème 1: CDF du Temps de Vieillissement (Échelle Log)")
+    plt.xlabel("Temps de Vieillissement (jours, log)")
     plt.ylabel("Proportion Cumulée")
-    plt.xlim(0, 1000)
+    plt.xscale('log')
     plt.savefig(out_dir / "02_proportion_cumulee_age.png", dpi=300, bbox_inches='tight')
     plt.close()
 
+    # 03. Délai de Mise à Jour WHOIS vs Âge (Carte de Densité Hexbin)
     df_updates = df[(df["update_delay"].notna()) & (df["update_delay"] >= 0)].copy()
-    plt.figure()
-    sns.scatterplot(data=df_updates, x="aging_time", y="update_delay", alpha=0.3, color="#9b59b6")
-    plt.title("Thème 2: Délai de Mise à Jour WHOIS vs Âge du Domaine")
-    plt.xlabel("Temps de Vieillissement (jours)")
-    plt.ylabel("Délai de Mise à Jour (jours avant l'attaque)")
-    plt.yscale('symlog')
-    plt.xscale('log')
-    plt.axhline(0, color='r', linestyle='--')
-    plt.savefig(out_dir / "03_maj_whois_vs_age.png", dpi=300, bbox_inches='tight')
-    plt.close()
-    
+    if not df_updates.empty:
+        plt.figure(figsize=(10, 6))
+        plt.hexbin(df_updates["aging_time"], df_updates["update_delay"], gridsize=40, cmap='Purples', xscale='log', yscale='symlog', mincnt=1, bins='log')
+        plt.colorbar(label='log10(Nombre de domaines)')
+        plt.title("Thème 2: Délai de Mise à Jour WHOIS vs Âge (Carte de Densité)")
+        plt.xlabel("Temps de Vieillissement (jours)")
+        plt.ylabel("Délai de Mise à Jour (jours avant l'attaque)")
+        plt.axhline(0, color='red', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        plt.savefig(out_dir / "03_maj_whois_vs_age.png", dpi=300)
+        plt.close()
+
+    # 04. Délai de MAJ pour les 'Sleepers' (>180j)
     old_domains = df_updates[df_updates["aging_time"] > 180]
     if len(old_domains) > 0:
         plt.figure()
@@ -273,19 +278,21 @@ def main():
         plt.savefig(out_dir / "04_dist_maj_sleepers.png", dpi=300, bbox_inches='tight')
         plt.close()
 
-    top_registrars = df["iana_id"].value_counts().nlargest(15).index.tolist()
-    if "None" in top_registrars: top_registrars.remove("None")
-    df_registrars = df[df["iana_id"].isin(top_registrars)]
+    # 05. Stratégies de Vieillissement selon le Top 15 Registrars (Noms réels)
+    top_registrars_named = df[df["iana_id"] != "None"]["registrar_name"].value_counts().nlargest(15).index.tolist()
+    df_registrars_named = df[df["registrar_name"].isin(top_registrars_named)]
     plt.figure(figsize=(14, 8))
-    sns.boxplot(data=df_registrars, x="iana_id", y="aging_time", order=top_registrars, palette="viridis")
+    sns.boxplot(data=df_registrars_named, x="registrar_name", y="aging_time", order=top_registrars_named, palette="viridis")
     plt.yscale("log")
     plt.title("Thème 3: Stratégies de Vieillissement selon le Top des Registrars")
-    plt.xlabel("ID IANA du Registrar")
+    plt.xlabel("Registrar")
     plt.ylabel("Temps de Vieillissement (jours, échelle log)")
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
     plt.savefig(out_dir / "05_age_par_registrar.png", dpi=300, bbox_inches='tight')
     plt.close()
 
+    # 06. Temps de Vieillissement par Marque Ciblée
     top_targets = df[df["trg"] != "unknown"]["trg"].value_counts().nlargest(12).index.tolist()
     df_targets = df[df["trg"].isin(top_targets)]
     if len(df_targets) > 0:
@@ -303,7 +310,7 @@ def main():
         plt.savefig(out_dir / "06_age_par_marque.png", dpi=300, bbox_inches='tight')
         plt.close()
 
-    plt.figure()
+    # 07. Évolution Annuelle de l'Âge Médian
     yearly_median = df.groupby("year")["aging_time"].median().reset_index()
     yearly_counts = df.groupby("year").size()
     valid_years = yearly_counts[yearly_counts > 0].index
@@ -320,6 +327,7 @@ def main():
         plt.savefig(out_dir / "07_evolution_annuelle_age.png", dpi=300, bbox_inches='tight')
         plt.close()
 
+    # 08. Frise Pré-Militarisation
     if len(sample_timeline) > 0:
         plt.figure(figsize=(10, 6))
         for i, row in enumerate(sample_timeline):
@@ -340,6 +348,7 @@ def main():
         plt.savefig(out_dir / "08_frise_chronologique_mutations.png", dpi=300, bbox_inches='tight')
         plt.close()
 
+    # 09. Classification des Stratégies
     plt.figure(figsize=(8, 6))
     ax = sns.countplot(data=df, x="aging_cluster", palette="magma")
     plt.title("Ch 2: Classification des Stratégies de Vieillissement")
@@ -350,18 +359,20 @@ def main():
     plt.savefig(out_dir / "09_classification_clusters_strategies.png", dpi=300, bbox_inches='tight')
     plt.close()
 
+    # 10. Espérance de Vie Opérationnelle (Survie) vs Âge (Carte de Densité Hexbin)
     df_surv = df.dropna(subset=["uptime_dur"]).copy()
-    if len(df_surv) > 0:
-        plt.figure()
-        sns.scatterplot(data=df_surv, x="aging_time", y="uptime_dur", alpha=0.5, color='#2980b9')
-        plt.title("Ch 7: Espérance de Vie Opérationnelle (Survie) vs Âge du Domaine")
+    if not df_surv.empty:
+        plt.figure(figsize=(10, 6))
+        plt.hexbin(df_surv["aging_time"], df_surv["uptime_dur"], gridsize=40, cmap='Blues', xscale='symlog', yscale='symlog', mincnt=1, bins='log')
+        plt.colorbar(label='log10(Nombre de domaines)')
+        plt.title("Ch 7: Espérance de Vie Opérationnelle (Survie) vs Âge (Carte de Densité)")
         plt.xlabel("Temps de Vieillissement (jours)")
         plt.ylabel("Durée de Survie (Uptime) Post-Attaque (heures)")
-        plt.xscale("symlog")
-        plt.yscale("symlog")
-        plt.savefig(out_dir / "10_courbe_survie_vs_age.png", dpi=300, bbox_inches='tight')
+        plt.tight_layout()
+        plt.savefig(out_dir / "10_courbe_survie_vs_age.png", dpi=300)
         plt.close()
 
+    # 11. Distribution de l'Écart avant Expiration
     df_exp = df.dropna(subset=["expiration_gap"])
     if len(df_exp) > 0:
         plt.figure()
@@ -374,6 +385,7 @@ def main():
         plt.savefig(out_dir / "11_expiration_gap_strategique.png", dpi=300, bbox_inches='tight')
         plt.close()
         
+    # 12. Tempo Opérationnel - Jour de l'Attaque (Weekend Gap)
     plt.figure(figsize=(10, 6))
     days_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     ax = sns.countplot(data=df, x="weekday", hue="strat_group", order=days_order, palette="coolwarm")
@@ -386,6 +398,7 @@ def main():
     plt.savefig(out_dir / "12_analyse_weekend_gap_sprinters_vs_sleepers.png", dpi=300)
     plt.close()
 
+    # 13. Crédibilité Lexicale - Longueur du Nom vs Âge
     plt.figure(figsize=(10, 6))
     sns.scatterplot(data=df, x="rd_len", y="aging_time", hue="aging_cluster", alpha=0.6, palette="viridis")
     plt.yscale("log")
@@ -398,12 +411,15 @@ def main():
     plt.savefig(out_dir / "13_correlation_longueur_domaine_vs_age.png", dpi=300)
     plt.close()
 
+    # 14. Stratégie Extensions - Proportion Sprinters vs Sleepers (Trié)
     top_tlds = df["tld"].value_counts().nlargest(10).index.tolist()
     if len(top_tlds) > 0:
         plt.figure(figsize=(12, 7))
-        tld_dist = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
-        tld_dist_pct = tld_dist.div(tld_dist.sum(axis=1), axis=0) * 100
-        tld_dist_pct.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
+        tld_dist_fixed = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
+        tld_dist_pct_fixed = tld_dist_fixed.div(tld_dist_fixed.sum(axis=1), axis=0) * 100
+        if "Sprinter" in tld_dist_pct_fixed.columns:
+            tld_dist_pct_fixed = tld_dist_pct_fixed.sort_values(by="Sprinter", ascending=False)
+        tld_dist_pct_fixed.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
         plt.title("Hyp. C: Stratégie Extensions - Proportion Sprinters vs Sleepers par TLD")
         plt.ylabel("Pourcentage (%)")
         plt.xlabel("TLD (Top 10)")
@@ -413,6 +429,7 @@ def main():
         plt.savefig(out_dir / "14_repartition_tld_sprinters_sleepers.png", dpi=300)
         plt.close()
 
+    # 15. Saisonnalité - Volume Mensuel des Attaques
     plt.figure(figsize=(10, 6))
     monthly_data = df.groupby(["month", "strat_group"]).size().reset_index(name="count")
     sns.lineplot(data=monthly_data, x="month", y="count", hue="strat_group", marker="o", linewidth=2.5)
@@ -424,8 +441,9 @@ def main():
     plt.savefig(out_dir / "15_saisonnalite_mensuelle_attaques.png", dpi=300)
     plt.close()
 
-    plt.figure(figsize=(10, 6))
+    # 16. ROI de l'Incubation - Survie Médiane post-attaque
     if not df_surv.empty:
+        plt.figure(figsize=(10, 6))
         median_surv = df_surv.groupby("aging_cluster")["uptime_dur"].median().reset_index()
         sns.barplot(data=median_surv, x="aging_cluster", y="uptime_dur", palette="magma")
         plt.title("Hyp. E: ROI de l'Incubation - Survie Médiane post-attaque")
@@ -434,78 +452,8 @@ def main():
         plt.tight_layout()
         plt.savefig(out_dir / "16_roi_survie_mediane_par_cluster_age.png", dpi=300)
         plt.close()
-
-    print("[*] Génération des graphiques FIXED et des nouvelles hypothèses...")
-
-    # 02 Fixed : CDF avec axe Logarithmique
-    df_valid_age = df[df["aging_time"] > 0]
-    plt.figure()
-    sns.ecdfplot(data=df_valid_age, x="aging_time", color="#e74c3c")
-    plt.title("Thème 1: CDF du Temps de Vieillissement (Échelle Log)")
-    plt.xlabel("Temps de Vieillissement (jours, log)")
-    plt.ylabel("Proportion Cumulée")
-    plt.xscale('log')
-    plt.savefig(out_dir / "02_proportion_cumulee_age_fixed.png", dpi=300, bbox_inches='tight')
-    plt.close()
-
-    # 03 Fixed : Densité Hexbin pour Update Delay
-    if not df_updates.empty:
-        plt.figure(figsize=(10, 6))
-        plt.hexbin(df_updates["aging_time"], df_updates["update_delay"], gridsize=40, cmap='Purples', xscale='log', yscale='symlog', mincnt=1, bins='log')
-        plt.colorbar(label='log10(Nombre de domaines)')
-        plt.title("Thème 2: Délai de Mise à Jour WHOIS vs Âge (Carte de Densité)")
-        plt.xlabel("Temps de Vieillissement (jours)")
-        plt.ylabel("Délai de Mise à Jour (jours avant l'attaque)")
-        plt.axhline(0, color='red', linestyle='--', alpha=0.5)
-        plt.tight_layout()
-        plt.savefig(out_dir / "03_maj_whois_vs_age_fixed.png", dpi=300)
-        plt.close()
-
-    # 05 Fixed : Registrars avec vrais noms
-    top_registrars_named = df[df["iana_id"] != "None"]["registrar_name"].value_counts().nlargest(15).index.tolist()
-    df_registrars_named = df[df["registrar_name"].isin(top_registrars_named)]
-    plt.figure(figsize=(14, 8))
-    sns.boxplot(data=df_registrars_named, x="registrar_name", y="aging_time", order=top_registrars_named, palette="viridis")
-    plt.yscale("log")
-    plt.title("Thème 3: Stratégies de Vieillissement selon le Top des Registrars (Noms réels)")
-    plt.xlabel("Registrar")
-    plt.ylabel("Temps de Vieillissement (jours, échelle log)")
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    plt.savefig(out_dir / "05_age_par_registrar_fixed.png", dpi=300, bbox_inches='tight')
-    plt.close()
-
-    # 10 Fixed : Densité Hexbin pour Survie ROI
-    if not df_surv.empty:
-        plt.figure(figsize=(10, 6))
-        plt.hexbin(df_surv["aging_time"], df_surv["uptime_dur"], gridsize=40, cmap='Blues', xscale='symlog', yscale='symlog', mincnt=1, bins='log')
-        plt.colorbar(label='log10(Nombre de domaines)')
-        plt.title("Ch 7: Espérance de Vie Opérationnelle (Survie) vs Âge (Carte de Densité)")
-        plt.xlabel("Temps de Vieillissement (jours)")
-        plt.ylabel("Durée de Survie (Uptime) Post-Attaque (heures)")
-        plt.tight_layout()
-        plt.savefig(out_dir / "10_courbe_survie_vs_age_fixed.png", dpi=300)
-        plt.close()
-
-    # 14 Fixed : Stratégie TLD Triée
-    if len(top_tlds) > 0:
-        plt.figure(figsize=(12, 7))
-        tld_dist_fixed = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
-        tld_dist_pct_fixed = tld_dist_fixed.div(tld_dist_fixed.sum(axis=1), axis=0) * 100
-        # Tri de la plus grande proportion de Sprinters à la plus petite
-        if "Sprinter" in tld_dist_pct_fixed.columns:
-            tld_dist_pct_fixed = tld_dist_pct_fixed.sort_values(by="Sprinter", ascending=False)
-        tld_dist_pct_fixed.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
-        plt.title("Hyp. C: Stratégie Extensions - Proportion Sprinters vs Sleepers (Trié)")
-        plt.ylabel("Pourcentage (%)")
-        plt.xlabel("TLD (Top 10)")
-        plt.axhline(50, color="gray", linestyle="--", alpha=0.5)
-        plt.legend(title="Stratégie")
-        plt.tight_layout()
-        plt.savefig(out_dir / "14_repartition_tld_sprinters_sleepers_fixed.png", dpi=300)
-        plt.close()
     
-    # 17. Ratio Stratégique des Registrars
+    # 17. Ratio Stratégique des Registrars (Spécialisation)
     top_10_regs = df[df["iana_id"] != "None"]["registrar_name"].value_counts().nlargest(10).index.tolist()
     if len(top_10_regs) > 0:
         plt.figure(figsize=(12, 7))
@@ -570,7 +518,6 @@ def main():
     unique_years = sorted(df["year"].unique())
     for y in unique_years:
         df_year = df[df["year"] == y]
-        # On évite de faire un graphe s'il y a trop peu de données pour une année donnée
         if len(df_year) > 100: 
             plt.figure(figsize=(10, 6))
             monthly_year_evol = df_year.groupby("month")["aging_time"].median().reset_index()
