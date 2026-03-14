@@ -39,6 +39,8 @@ SAMPLE_DIR = Path(__file__).parent.parent / "sample_data"
 # Cache helpers
 # ---------------------------------------------------------------------------
 
+CACHE_VERSION = 2
+
 def compute_cache_key(input_file: Path, n_features_hash: int, n_components: int) -> str:
     """
     Compute a short cache key based on:
@@ -47,7 +49,7 @@ def compute_cache_key(input_file: Path, n_features_hash: int, n_components: int)
     - Vectorizer config (n_features_hash, n_components)
     """
     mtime = input_file.stat().st_mtime
-    key_str = f"{input_file.resolve()}|mtime={mtime}|n_features_hash={n_features_hash}|n_components={n_components}"
+    key_str = f"{input_file.resolve()}|mtime={mtime}|n_features_hash={n_features_hash}|n_components={n_components}|v={CACHE_VERSION}"
     return hashlib.md5(key_str.encode()).hexdigest()[:16]
 
 
