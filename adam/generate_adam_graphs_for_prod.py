@@ -647,6 +647,33 @@ def main():
         plt.savefig(out_dir / "NEW_26_burn_after_use.png", dpi=300)
         plt.close()
 
+        # NEW_27 : Volume d'Attaques par Trimestre (Introduction)
+    plt.figure(figsize=(12, 6))
+    df_sorted_q = df.sort_values('quarter')
+    sns.countplot(data=df_sorted_q, x="quarter", palette="viridis")
+    plt.title("NEW 27: Évolution Globale du Volume d'Attaques par Trimestre")
+    plt.xlabel("Trimestre (Année-Q)")
+    plt.ylabel("Nombre de Domaines Malveillants Découverts")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(out_dir / "NEW_27_volume_attaques_trimestre.png", dpi=300)
+    plt.close()
+
+    # NEW_28 : Résistance aux Takedowns selon l'Âge du Domaine (Survie Old vs New)
+    df_surv_clean = df.dropna(subset=["uptime_dur"])
+    df_surv_clean = df_surv_clean[df_surv_clean["uptime_dur"] > 0]
+    if not df_surv_clean.empty:
+        plt.figure(figsize=(12, 7))
+        sns.boxplot(data=df_surv_clean, x="extended_cluster", y="uptime_dur", palette="magma")
+        plt.yscale("log")
+        plt.title("NEW 28: Résistance aux Takedowns selon l'Âge du Domaine (Survie)")
+        plt.xlabel("Catégorie d'Âge du Domaine (du plus jeune au plus vieux)")
+        plt.ylabel("Durée de Survie avant Takedown (Heures, échelle log)")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig(out_dir / "NEW_28_resistance_takedown_boxplot.png", dpi=300)
+        plt.close()
+
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
 
 if __name__ == "__main__":
