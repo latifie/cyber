@@ -137,9 +137,32 @@ def main():
             elif aging_time <= 7: cluster = "Rapide (1-7j)"
             elif aging_time <= 30: cluster = "Moyen (7-30j)"
             
+            # --- NOUVEAUX CLUSTERS ETENDUS ---
+            ext_cluster = "Legacy (>1an)"
+            if aging_time <= 1: ext_cluster = "Immédiat (<1j)"
+            elif aging_time <= 7: ext_cluster = "Rapide (1-7j)"
+            elif aging_time <= 30: ext_cluster = "Moyen (7-30j)"
+            elif aging_time <= 90: ext_cluster = "Sleeper Court (1-3m)"
+            elif aging_time <= 180: ext_cluster = "Deep Sleeper (3-6m)"
+            elif aging_time <= 365: ext_cluster = "Zombie (6-12m)"
+
             rd = rec.get("rd", "unknown")
             tld = get_tld(rd)
             
+            # --- EXTRACTION CHINE (TLD + MAXMIND CC_CODE) ---
+            is_cn = False
+            if tld == "cn":
+                is_cn = True
+            else:
+                host_info = rec.get("host_info", {})
+                maxmind = host_info.get("maxmind", [])
+                for obj in maxmind:
+                    answers = obj.get("answers", {})
+                    cc = answers.get("cc_code")
+                    if cc and str(cc).upper() == "CN":
+                        is_cn = True
+                        break
+
             ip_changes = 0
             unique_ips_before = set()
             html_changes_count = 0
@@ -192,6 +215,8 @@ def main():
                 "tld": tld,
                 "aging_time": aging_time,
                 "aging_cluster": cluster,
+                "extended_cluster": ext_cluster, 
+                "is_cn": is_cn, 
                 "update_delay": update_delay,
                 "expiration_gap": expiration_gap,
                 "uptime_dur": uptime_dur,
@@ -224,12 +249,16 @@ def main():
     df["aging_cluster"] = pd.Categorical(df["aging_cluster"], categories=["Immédiat (<1j)", "Rapide (1-7j)", "Moyen (7-30j)", "Sleeper (>30j)"], ordered=True)
     df["strat_group"] = df["aging_cluster"].apply(lambda x: "Sleeper" if "Sleeper" in str(x) else "Sprinter")
     
+    # Ajout de l'ordre pour les nouveaux clusters
+    extended_cats = ["Immédiat (<1j)", "Rapide (1-7j)", "Moyen (7-30j)", "Sleeper Court (1-3m)", "Deep Sleeper (3-6m)", "Zombie (6-12m)", "Legacy (>1an)"]
+    df["extended_cluster"] = pd.Categorical(df["extended_cluster"], categories=extended_cats, ordered=True)
+
     df["registrar_name"] = df["iana_id"].map(registrar_map).fillna("ID: " + df["iana_id"].astype(str))
     
     print(f"Total domains processed: {total_processed}")
     print(f"Total valid domains in DataFrame: {len(df)}")
     print(f"Diagnostics: {filter_stats}")
-    print(f"[*] Génération des graphiques...")
+    print(f"[*] Génération des graphiques classiques...")
 
 
     # 01. Distribution globale de l'âge (Log scale)
@@ -529,6 +558,64 @@ def main():
             plt.tight_layout()
             plt.savefig(out_dir / f"21_evolution_mensuelle_{y}_age.png", dpi=300)
             plt.close()
+
+
+    print(f"[*] Génération des nouveaux graphiques (NEW_)...")
+
+    # NEW_22 : Évolution des Stratégies de Vieillissement par Année (Échelle Étendue)
+    plt.figure(figsize=(14, 7))
+    sns.countplot(data=df, x="year", hue="extended_cluster", palette="magma")
+    plt.title("NEW 22: Évolution des Stratégies de Vieillissement par Année (Échelle Étendue)")
+    plt.xlabel("Année")
+    plt.ylabel("Nombre de domaines")
+    plt.legend(title="Catégories d'Âge", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.savefig(out_dir / "NEW_22_strategies_par_annee.png", dpi=300)
+    plt.close()
+
+    # NEW_23 : Zoom CHINE - Délai de Mise à Jour WHOIS vs Âge (Contourner le RGPD)
+    df_cn = df[(df["is_cn"] == True) & (df["update_delay"].notna()) & (df["update_delay"] >= 0)]
+    if not df_cn.empty:
+        plt.figure(figsize=(10, 6))
+        plt.hexbin(df_cn["aging_time"], df_cn["update_delay"], gridsize=40, cmap='Reds', xscale='log', yscale='symlog', mincnt=1, bins='log')
+        plt.colorbar(label='log10(Nombre de domaines Chinois)')
+        plt.title("NEW 23: Zoom CHINE - Délai de Mise à Jour WHOIS vs Âge")
+        plt.xlabel("Temps de Vieillissement (jours)")
+        plt.ylabel("Délai de Mise à Jour (jours avant l'attaque)")
+        plt.axhline(0, color='blue', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        plt.savefig(out_dir / "NEW_23_zoom_chine_maj_vs_age.png", dpi=300)
+        plt.close()
+
+        # NEW_24 : Zoom CHINE - Délai de MAJ pour les Sleepers Chinois (> 180 jours)
+        old_cn = df_cn[df_cn["aging_time"] > 180]
+        if not old_cn.empty:
+            plt.figure(figsize=(10, 6))
+            sns.histplot(old_cn["update_delay"], bins=50, kde=True, color="#c0392b")
+            plt.title("NEW 24: Zoom CHINE - Délai de MAJ pour les Sleepers (> 180 jours)")
+            plt.xlabel("Délai de Mise à Jour (jours avant l'attaque)")
+            plt.ylabel("Nombre de domaines")
+            plt.xlim(0, 400)
+            plt.tight_layout()
+            plt.savefig(out_dir / "NEW_24_chine_maj_sleepers.png", dpi=300)
+            plt.close()
+
+    # NEW_25 : Corrélation entre Écart avant Expiration et Mise à Jour (Le "Burn After Use")
+    df_exp_upd = df[(df["expiration_gap"].notna()) & (df["update_delay"].notna()) & (df["update_delay"] >= 0)]
+    df_exp_upd = df_exp_upd[(df_exp_upd["expiration_gap"] >= -50) & (df_exp_upd["expiration_gap"] <= 800)]
+    if not df_exp_upd.empty:
+        plt.figure(figsize=(10, 6))
+        plt.hexbin(df_exp_upd["expiration_gap"], df_exp_upd["update_delay"], gridsize=50, cmap='Oranges', yscale='symlog', mincnt=1, bins='log')
+        plt.colorbar(label='log10(Nombre de domaines)')
+        plt.title("NEW 25: Corrélation entre Expiration Restante et Modification")
+        plt.xlabel("Jours Restants avant Expiration (lors de l'attaque)")
+        plt.ylabel("Délai de Mise à Jour (jours avant l'attaque)")
+        plt.axvline(0, color='red', linestyle='--', alpha=0.8, label='Date Expiration')
+        plt.axvline(365, color='blue', linestyle='--', alpha=0.8, label='1 An de validité')
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(out_dir / "NEW_25_expiration_vs_maj.png", dpi=300)
+        plt.close()
 
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
 
