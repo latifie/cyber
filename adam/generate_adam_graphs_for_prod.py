@@ -616,18 +616,21 @@ def main():
         plt.savefig(out_dir / "NEW_25_burn_after_use.png", dpi=300)
         plt.close()
 
-    # NEW_25 : Preuve 
+# NEW_26 : Preuve du "Burn After Use" (Écart avant expiration par Stratégie)
     df_exp = df.dropna(subset=["expiration_gap"])
     df_exp_zoom = df_exp[(df_exp["expiration_gap"] >= -50) & (df_exp["expiration_gap"] <= 400)]
     if not df_exp_zoom.empty:
-        fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        # Ajout de sharex=False pour forcer l'affichage de l'axe des abscisses en haut
+        fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=False)
         
         # Étages du haut : Les Sprinters
         sns.histplot(data=df_exp_zoom[df_exp_zoom["strat_group"] == "Sprinter"], 
                      x="expiration_gap", color="#e74c3c", bins=50, kde=True, ax=axes[0])
         axes[0].set_title("NEW 25: Stratégie des Sprinters (Attaque quasi-immédiate)")
         axes[0].set_ylabel("Nombre de domaines")
+        axes[0].set_xlabel("Jours Restants avant Expiration (lors de l'attaque)")
         axes[0].axvline(365, color='blue', linestyle='--', alpha=0.8, label='1 An de validité (365j)')
+        axes[0].set_xlim(-50, 400)
         axes[0].legend()
         
         # Étage du bas : Les Sleepers
@@ -637,6 +640,7 @@ def main():
         axes[1].set_xlabel("Jours Restants avant Expiration (lors de l'attaque)")
         axes[1].set_ylabel("Nombre de domaines")
         axes[1].axvline(0, color='red', linestyle='--', alpha=0.8, label='Péremption (0j)')
+        axes[1].set_xlim(-50, 400)
         axes[1].legend()
         
         plt.tight_layout()
