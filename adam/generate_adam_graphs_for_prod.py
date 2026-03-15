@@ -616,6 +616,33 @@ def main():
         plt.savefig(out_dir / "NEW_25_burn_after_use.png", dpi=300)
         plt.close()
 
+    # NEW_25 : Preuve 
+    df_exp = df.dropna(subset=["expiration_gap"])
+    df_exp_zoom = df_exp[(df_exp["expiration_gap"] >= -50) & (df_exp["expiration_gap"] <= 400)]
+    if not df_exp_zoom.empty:
+        fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        
+        # Étages du haut : Les Sprinters
+        sns.histplot(data=df_exp_zoom[df_exp_zoom["strat_group"] == "Sprinter"], 
+                     x="expiration_gap", color="#e74c3c", bins=50, kde=True, ax=axes[0])
+        axes[0].set_title("NEW 25: Stratégie des Sprinters (Attaque quasi-immédiate)")
+        axes[0].set_ylabel("Nombre de domaines")
+        axes[0].axvline(365, color='blue', linestyle='--', alpha=0.8, label='1 An de validité (365j)')
+        axes[0].legend()
+        
+        # Étage du bas : Les Sleepers
+        sns.histplot(data=df_exp_zoom[df_exp_zoom["strat_group"] == "Sleeper"], 
+                     x="expiration_gap", color="#3498db", bins=50, kde=True, ax=axes[1])
+        axes[1].set_title("Stratégie des Sleepers (Burn After Use)")
+        axes[1].set_xlabel("Jours Restants avant Expiration (lors de l'attaque)")
+        axes[1].set_ylabel("Nombre de domaines")
+        axes[1].axvline(0, color='red', linestyle='--', alpha=0.8, label='Péremption (0j)')
+        axes[1].legend()
+        
+        plt.tight_layout()
+        plt.savefig(out_dir / "NEW_26_burn_after_use.png", dpi=300)
+        plt.close()
+
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
 
 if __name__ == "__main__":
