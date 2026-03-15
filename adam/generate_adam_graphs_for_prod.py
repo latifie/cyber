@@ -600,21 +600,20 @@ def main():
             plt.savefig(out_dir / "NEW_24_chine_maj_sleepers.png", dpi=300)
             plt.close()
 
-    # NEW_25 : Corrélation entre Écart avant Expiration et Mise à Jour (Le "Burn After Use")
-    df_exp_upd = df[(df["expiration_gap"].notna()) & (df["update_delay"].notna()) & (df["update_delay"] >= 0)]
-    df_exp_upd = df_exp_upd[(df_exp_upd["expiration_gap"] >= -50) & (df_exp_upd["expiration_gap"] <= 800)]
-    if not df_exp_upd.empty:
+    # NEW_25 : Preuve du "Burn After Use" (Écart avant expiration par Stratégie)
+    df_exp = df.dropna(subset=["expiration_gap"])
+    # On filtre pour faire un beau zoom sur la dernière année de vie
+    df_exp_zoom = df_exp[(df_exp["expiration_gap"] >= -50) & (df_exp["expiration_gap"] <= 400)]
+    if not df_exp_zoom.empty:
         plt.figure(figsize=(10, 6))
-        plt.hexbin(df_exp_upd["expiration_gap"], df_exp_upd["update_delay"], gridsize=50, cmap='Oranges', yscale='symlog', mincnt=1, bins='log')
-        plt.colorbar(label='log10(Nombre de domaines)')
-        plt.title("NEW 25: Corrélation entre Expiration Restante et Modification")
+        sns.kdeplot(data=df_exp_zoom, x="expiration_gap", hue="strat_group", common_norm=False, fill=True, palette="Set1")
+        plt.title("NEW 25: Preuve du 'Burn After Use' (Sprinters vs Sleepers)")
         plt.xlabel("Jours Restants avant Expiration (lors de l'attaque)")
-        plt.ylabel("Délai de Mise à Jour (jours avant l'attaque)")
-        plt.axvline(0, color='red', linestyle='--', alpha=0.8, label='Date Expiration')
-        plt.axvline(365, color='blue', linestyle='--', alpha=0.8, label='1 An de validité')
-        plt.legend()
+        plt.ylabel("Densité de distribution")
+        plt.axvline(0, color='red', linestyle='--', alpha=0.8, label='Péremption (0j)')
+        plt.axvline(365, color='blue', linestyle='--', alpha=0.8, label='1 An de validité (365j)')
         plt.tight_layout()
-        plt.savefig(out_dir / "NEW_25_expiration_vs_maj.png", dpi=300)
+        plt.savefig(out_dir / "NEW_25_burn_after_use.png", dpi=300)
         plt.close()
 
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
