@@ -456,14 +456,14 @@ def main():
     plt.savefig(out_dir / "longueur_domaine_vs_age.png", dpi=300)
     plt.close()
 
-    # 14. Stratégie Extensions - Proportion Sprinters vs Sleepers (Trié)
+    # 14. Stratégie Extensions - Proportion Militarisation vs Incubation (Trié)
     top_tlds = df["tld"].value_counts().nlargest(10).index.tolist()
     if len(top_tlds) > 0:
         plt.figure(figsize=(12, 7))
         tld_dist_fixed = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
         tld_dist_pct_fixed = tld_dist_fixed.div(tld_dist_fixed.sum(axis=1), axis=0) * 100
-        if "Sprinter" in tld_dist_pct_fixed.columns:
-            tld_dist_pct_fixed = tld_dist_pct_fixed.sort_values(by="Sprinter", ascending=False)
+        if "Militarisation Directe" in tld_dist_pct_fixed.columns:
+            tld_dist_pct_fixed = tld_dist_pct_fixed.sort_values(by="Militarisation Directe", ascending=False)
         tld_dist_pct_fixed.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
         plt.title("Répartition des Stratégies par TLD")
         plt.ylabel("Pourcentage (%)")
@@ -504,8 +504,8 @@ def main():
         plt.figure(figsize=(12, 7))
         reg_dist = df[df["registrar_name"].isin(top_10_regs)].groupby(["registrar_name", "strat_group"]).size().unstack().fillna(0)
         reg_dist_pct = reg_dist.div(reg_dist.sum(axis=1), axis=0) * 100
-        if "Sprinter" in reg_dist_pct.columns:
-            reg_dist_pct = reg_dist_pct.sort_values(by="Sprinter", ascending=False)
+        if "Militarisation Directe" in reg_dist_pct.columns:
+            reg_dist_pct = reg_dist_pct.sort_values(by="Militarisation Directe", ascending=False)
         reg_dist_pct.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
         plt.title("Spécialisation Stratégique des Registrars")
         plt.ylabel("Pourcentage (%)")
@@ -529,15 +529,15 @@ def main():
     plt.close()
 
     # 19. La preuve du Drop Catching (Pie Chart)
-    old_sleepers = df[df["aging_time"] > 365].copy()
-    if not old_sleepers.empty:
+    old_incubated = df[df["aging_time"] > 365].copy()
+    if not old_incubated.empty:
         def categorize_drop(ud_val):
             if pd.isna(ud_val) or ud_val < 0: return "Inconnu / Sans MAJ"
             if ud_val <= 3: return "Drop Catching (Rachat, MAJ < 3j)" 
             return "Incubation Classique"
             
-        old_sleepers["drop_catch_status"] = old_sleepers["update_delay"].apply(categorize_drop)
-        counts = old_sleepers["drop_catch_status"].value_counts()
+        old_incubated["drop_catch_status"] = old_incubated["update_delay"].apply(categorize_drop)
+        counts = old_incubated["drop_catch_status"].value_counts()
         
         plt.figure(figsize=(8, 8))
         plt.pie(counts, labels=counts.index, autopct='%1.1f%%', startangle=140, colors=["#95a5a6", "#e74c3c", "#3498db"])
@@ -602,9 +602,7 @@ def main():
         plt.savefig(out_dir / "militarisation_tardive_densite.png", dpi=300)
         plt.close()
 
-# 24 : Preuve de la "Militarisation Tardive" (Écart avant expiration par Stratégie)
-    df_exp = df.dropna(subset=["expiration_gap"])
-    df_exp_zoom = df_exp[(df_exp["expiration_gap"] >= -50) & (df_exp["expiration_gap"] <= 400)]
+    # Preuve de la Militarisation Tardive
     if not df_exp_zoom.empty:
         # Ajout de sharex=False pour forcer l'affichage de l'axe des abscisses en haut
         fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=False)
@@ -619,7 +617,7 @@ def main():
         axes[0].set_xlim(-50, 400)
         axes[0].legend()
         
-        # Étage du bas : Les Sleepers
+        # Étage du bas : Incubation
         sns.histplot(data=df_exp_zoom[df_exp_zoom["strat_group"] == "Incubation"], 
                      x="expiration_gap", color="#3498db", bins=50, kde=True, ax=axes[1])
         axes[1].set_title("Comparaison : Militarisation Tardive (Incubation)")
