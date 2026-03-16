@@ -575,10 +575,7 @@ def main():
             plt.savefig(out_dir / f"monthly_age_trend_{y}.png", dpi=300)
             plt.close()
 
-
-    print(f"[*] Génération des nouveaux graphiques (NEW_)...")
-
-    # NEW_22 : Évolution des Stratégies de Vieillissement par Année (Échelle Étendue)
+    # 22 : Évolution des Stratégies de Vieillissement par Année (Échelle Étendue)
     plt.figure(figsize=(14, 7))
     sns.countplot(data=df, x="year", hue="extended_cluster", palette="magma")
     plt.title("Évolution des Stratégies de Vieillissement (Échelle Étendue)")
@@ -589,7 +586,7 @@ def main():
     plt.savefig(out_dir / "extended_aging_strategies_yearly.png", dpi=300)
     plt.close()
 
-    # NEW_25 : Preuve du "Burn After Use" (Écart avant expiration par Stratégie)
+    # 23 : Preuve du "Burn After Use" (Écart avant expiration par Stratégie)
     df_exp = df.dropna(subset=["expiration_gap"])
     # On filtre pour faire un beau zoom sur la dernière année de vie
     df_exp_zoom = df_exp[(df_exp["expiration_gap"] >= -50) & (df_exp["expiration_gap"] <= 400)]
@@ -605,7 +602,7 @@ def main():
         plt.savefig(out_dir / "burn_after_use_evidence_kde.png", dpi=300)
         plt.close()
 
-# NEW_26 : Preuve du "Burn After Use" (Écart avant expiration par Stratégie)
+# 24 : Preuve du "Burn After Use" (Écart avant expiration par Stratégie)
     df_exp = df.dropna(subset=["expiration_gap"])
     df_exp_zoom = df_exp[(df_exp["expiration_gap"] >= -50) & (df_exp["expiration_gap"] <= 400)]
     if not df_exp_zoom.empty:
@@ -636,7 +633,7 @@ def main():
         plt.savefig(out_dir / "burn_after_use_comparison.png", dpi=300)
         plt.close()
 
-    # NEW_27 : Volume d'Attaques par Trimestre (Introduction)
+    # 27 : Volume d'Attaques par Trimestre (Introduction)
     plt.figure(figsize=(12, 6))
     df_sorted_q = df.sort_values('quarter')
     sns.countplot(data=df_sorted_q, x="quarter", palette="viridis")
@@ -648,7 +645,7 @@ def main():
     plt.savefig(out_dir / "quarterly_attack_volume.png", dpi=300)
     plt.close()
 
-    # NEW_28 : Résistance aux Takedowns selon l'Âge du Domaine (Survie Old vs New)
+    # 28 : Résistance aux Takedowns selon l'Âge du Domaine (Survie Old vs New)
     df_surv_clean = df.dropna(subset=["uptime_dur"])
     df_surv_clean = df_surv_clean[df_surv_clean["uptime_dur"] > 0]
     if not df_surv_clean.empty:
