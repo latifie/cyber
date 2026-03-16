@@ -674,6 +674,24 @@ def main():
         plt.savefig(out_dir / "NEW_28_resistance_takedown_boxplot.png", dpi=300)
         plt.close()
 
+    # NEW_31 : The Weaponization Trigger (Délai entre mutation technique et détection)
+    df_weap = df.dropna(subset=["weaponization_gap"])
+    # On se concentre sur les mutations qui ont lieu dans les 60 jours avant la découverte
+    df_weap = df_weap[(df_weap["weaponization_gap"] >= 0) & (df_weap["weaponization_gap"] <= 60)]
+    
+    if not df_weap.empty:
+        plt.figure(figsize=(10, 6))
+        sns.histplot(data=df_weap, x="weaponization_gap", hue="strat_group", bins=60, kde=True, palette="Set1")
+        plt.title("NEW 31: The Weaponization Trigger\nDélai entre la dernière modification technique (DNS/HTML) et la découverte")
+        plt.xlabel("Jours avant la découverte (0 = Jour de la découverte)")
+        plt.ylabel("Nombre de domaines")
+        plt.axvline(0, color='red', linestyle='--', alpha=0.8, label="Découverte (Takedown Trigger)")
+        plt.xlim(60, -2) # Inverser l'axe x pour lire de gauche (60j avant) à droite (0j avant)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(out_dir / "NEW_31_weaponization_trigger.png", dpi=300)
+        plt.close()
+
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
 
 if __name__ == "__main__":
