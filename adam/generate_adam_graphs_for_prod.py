@@ -177,6 +177,8 @@ def main():
                 "html_change": None
             }
             
+            last_mutation_dt = None
+            
             pre_uptime_count = 0
             for u in rec.get("uptime", []):
                 dt = parse_date(u.get("dt"))
@@ -184,6 +186,7 @@ def main():
                 
                 if dt > discovery: continue 
                 pre_uptime_count += 1
+                is_mutation = False
                 
                 if u.get("arec"):
                     ip_tuple = tuple(sorted(u["arec"]))
@@ -193,6 +196,7 @@ def main():
                         if (discovery - dt).total_seconds() / 86400 <= 7:
                             timeline_events["ip_change"] = dt
                             has_pre_attack_changes = True
+                        is_mutation = True
                     last_ip = ip_tuple
                 
                 if u.get("html_ssdeep"):
@@ -202,13 +206,22 @@ def main():
                         if (discovery - dt).total_seconds() / 86400 <= 7:
                             timeline_events["html_change"] = dt
                             has_pre_attack_changes = True
+                        is_mutation = True
                     last_html = h
+                
+                # Mise à jour du timestamp de la dernière mutation
+                if is_mutation:
+                    if last_mutation_dt is None or dt > last_mutation_dt:
+                        last_mutation_dt = dt
             
             if pre_uptime_count == 0:
                 filter_stats["no_pre_uptime"] += 1
                     
             dns_changes = len(unique_ips_before)
             year_discovery = discovery.year
+            
+            # --- Calcul de l'écart entre la dernière mutation (Militarisation) et la découverte ---
+            weaponization_gap = (discovery - last_mutation_dt).total_seconds() / 86400 if last_mutation_dt else None
             
             records.append({
                 "rd": rd,
@@ -231,7 +244,8 @@ def main():
                 "year_month": discovery.strftime("%Y-%m"),
                 "weekday": discovery.strftime("%A"),
                 "rd_len": len(rd),
-                "content_versions": html_changes_count + 1 if last_html else 0
+                "content_versions": html_changes_count + 1 if last_html else 0,
+                "weaponization_gap": weaponization_gap
             })
             
             if has_pre_attack_changes and len(sample_timeline) < 7:
@@ -254,6 +268,8 @@ def main():
     df["extended_cluster"] = pd.Categorical(df["extended_cluster"], categories=extended_cats, ordered=True)
 
     df["registrar_name"] = df["iana_id"].map(registrar_map).fillna("ID: " + df["iana_id"].astype(str))
+    
+    df["quarter"] = df["year"].astype(str) + "-Q" + ((df["month"] - 1) // 3 + 1).astype(str)
     
     print(f"Total domains processed: {total_processed}")
     print(f"Total valid domains in DataFrame: {len(df)}")
@@ -647,9 +663,7 @@ def main():
         plt.savefig(out_dir / "NEW_26_burn_after_use.png", dpi=300)
         plt.close()
 
-    df["quarter"] = df["year"].astype(str) + "-Q" + ((df["month"] - 1) // 3 + 1).astype(str)
-
-        # NEW_27 : Volume d'Attaques par Trimestre (Introduction)
+    # NEW_27 : Volume d'Attaques par Trimestre (Introduction)
     plt.figure(figsize=(12, 6))
     df_sorted_q = df.sort_values('quarter')
     sns.countplot(data=df_sorted_q, x="quarter", palette="viridis")
@@ -677,22 +691,23 @@ def main():
         plt.close()
 
     # NEW_31 : The Weaponization Trigger (Délai entre mutation technique et détection)
-    df_weap = df.dropna(subset=["weaponization_gap"])
-    # On se concentre sur les mutations qui ont lieu dans les 60 jours avant la découverte
-    df_weap = df_weap[(df_weap["weaponization_gap"] >= 0) & (df_weap["weaponization_gap"] <= 60)]
-    
-    if not df_weap.empty:
-        plt.figure(figsize=(10, 6))
-        sns.histplot(data=df_weap, x="weaponization_gap", hue="strat_group", bins=60, kde=True, palette="Set1")
-        plt.title("NEW 31: The Weaponization Trigger\nDélai entre la dernière modification technique (DNS/HTML) et la découverte")
-        plt.xlabel("Jours avant la découverte (0 = Jour de la découverte)")
-        plt.ylabel("Nombre de domaines")
-        plt.axvline(0, color='red', linestyle='--', alpha=0.8, label="Découverte (Takedown Trigger)")
-        plt.xlim(60, -2) # Inverser l'axe x pour lire de gauche (60j avant) à droite (0j avant)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(out_dir / "NEW_31_weaponization_trigger.png", dpi=300)
-        plt.close()
+    if "weaponization_gap" in df.columns:
+        df_weap = df.dropna(subset=["weaponization_gap"])
+        # On se concentre sur les mutations qui ont lieu dans les 60 jours avant la découverte
+        df_weap = df_weap[(df_weap["weaponization_gap"] >= 0) & (df_weap["weaponization_gap"] <= 60)]
+        
+        if not df_weap.empty:
+            plt.figure(figsize=(10, 6))
+            sns.histplot(data=df_weap, x="weaponization_gap", hue="strat_group", bins=60, kde=True, palette="Set1")
+            plt.title("NEW 31: The Weaponization Trigger\nDélai entre la dernière modification technique (DNS/HTML) et la découverte")
+            plt.xlabel("Jours avant la découverte (0 = Jour de la découverte)")
+            plt.ylabel("Nombre de domaines")
+            plt.axvline(0, color='red', linestyle='--', alpha=0.8, label="Découverte (Takedown Trigger)")
+            plt.xlim(60, -2) # Inverser l'axe x pour lire de gauche (60j avant) à droite (0j avant)
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(out_dir / "NEW_31_weaponization_trigger.png", dpi=300)
+            plt.close()
 
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
 
