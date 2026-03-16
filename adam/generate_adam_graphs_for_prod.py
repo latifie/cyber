@@ -589,33 +589,6 @@ def main():
     plt.savefig(out_dir / "NEW_22_strategies_par_annee.png", dpi=300)
     plt.close()
 
-    # NEW_23 : Zoom CHINE - Délai de Mise à Jour WHOIS vs Âge (Contourner le RGPD)
-    df_cn = df[(df["is_cn"] == True) & (df["update_delay"].notna()) & (df["update_delay"] >= 0)]
-    if not df_cn.empty:
-        plt.figure(figsize=(10, 6))
-        plt.hexbin(df_cn["aging_time"], df_cn["update_delay"], gridsize=40, cmap='Reds', xscale='log', yscale='symlog', mincnt=1, bins='log')
-        plt.colorbar(label='log10(Nombre de domaines Chinois)')
-        plt.title("NEW 23: Zoom CHINE - Délai de Mise à Jour WHOIS vs Âge")
-        plt.xlabel("Temps de Vieillissement (jours)")
-        plt.ylabel("Délai de Mise à Jour (jours avant l'attaque)")
-        plt.axhline(0, color='blue', linestyle='--', alpha=0.5)
-        plt.tight_layout()
-        plt.savefig(out_dir / "NEW_23_zoom_chine_maj_vs_age.png", dpi=300)
-        plt.close()
-
-        # NEW_24 : Zoom CHINE - Délai de MAJ pour les Sleepers Chinois (> 180 jours)
-        old_cn = df_cn[df_cn["aging_time"] > 180]
-        if not old_cn.empty:
-            plt.figure(figsize=(10, 6))
-            sns.histplot(old_cn["update_delay"], bins=50, kde=True, color="#c0392b")
-            plt.title("NEW 24: Zoom CHINE - Délai de MAJ pour les Sleepers (> 180 jours)")
-            plt.xlabel("Délai de Mise à Jour (jours avant l'attaque)")
-            plt.ylabel("Nombre de domaines")
-            plt.xlim(0, 400)
-            plt.tight_layout()
-            plt.savefig(out_dir / "NEW_24_chine_maj_sleepers.png", dpi=300)
-            plt.close()
-
     # NEW_25 : Preuve du "Burn After Use" (Écart avant expiration par Stratégie)
     df_exp = df.dropna(subset=["expiration_gap"])
     # On filtre pour faire un beau zoom sur la dernière année de vie
@@ -689,25 +662,6 @@ def main():
         plt.tight_layout()
         plt.savefig(out_dir / "NEW_28_resistance_takedown_boxplot.png", dpi=300)
         plt.close()
-
-    # NEW_31 : The Weaponization Trigger (Délai entre mutation technique et détection)
-    if "weaponization_gap" in df.columns:
-        df_weap = df.dropna(subset=["weaponization_gap"])
-        # On se concentre sur les mutations qui ont lieu dans les 60 jours avant la découverte
-        df_weap = df_weap[(df_weap["weaponization_gap"] >= 0) & (df_weap["weaponization_gap"] <= 60)]
-        
-        if not df_weap.empty:
-            plt.figure(figsize=(10, 6))
-            sns.histplot(data=df_weap, x="weaponization_gap", hue="strat_group", bins=60, kde=True, palette="Set1")
-            plt.title("NEW 31: The Weaponization Trigger\nDélai entre la dernière modification technique (DNS/HTML) et la découverte")
-            plt.xlabel("Jours avant la découverte (0 = Jour de la découverte)")
-            plt.ylabel("Nombre de domaines")
-            plt.axvline(0, color='red', linestyle='--', alpha=0.8, label="Découverte (Takedown Trigger)")
-            plt.xlim(60, -2) # Inverser l'axe x pour lire de gauche (60j avant) à droite (0j avant)
-            plt.legend()
-            plt.tight_layout()
-            plt.savefig(out_dir / "NEW_31_weaponization_trigger.png", dpi=300)
-            plt.close()
 
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
 
