@@ -261,7 +261,7 @@ def main():
     # PRÉPARATION GLOBALE DES COLONNES POUR LES GRAPHIQUES
     # ---------------------------------------------------------
     df["aging_cluster"] = pd.Categorical(df["aging_cluster"], categories=["Militarisation Directe (<1j)", "Militarisation Rapide (1-7j)", "Incubation Précoce (7-30j)", "Domaine en Incubation (>30j)"], ordered=True)
-    df["strat_group"] = df["aging_cluster"].apply(lambda x: "Incubation" if "Incubation" in str(x) else "Militarisation Directe")
+    df["strat_group"] = df["aging_cluster"].apply(lambda x: "Incubation" if "Domaine en Incubation (>30j)" in str(x) else "Militarisation Directe")
     
     # Ajout de l'ordre pour les nouveaux clusters
     extended_cats = ["Militarisation Directe (<1j)", "Militarisation Rapide (1-7j)", "Incubation Précoce (7-30j)", "Incubation Courte (1-3 mois)", "Incubation Prolongée (3-6 mois)", "Incubation Longue (6-12 mois)", "Infrastructure Mature (>1an)"]
