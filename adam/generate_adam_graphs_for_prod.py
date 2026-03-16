@@ -647,6 +647,8 @@ def main():
         plt.savefig(out_dir / "NEW_26_burn_after_use.png", dpi=300)
         plt.close()
 
+    df["quarter"] = df["year"].astype(str) + "-Q" + ((df["month"] - 1) // 3 + 1).astype(str)
+
         # NEW_27 : Volume d'Attaques par Trimestre (Introduction)
     plt.figure(figsize=(12, 6))
     df_sorted_q = df.sort_values('quarter')
