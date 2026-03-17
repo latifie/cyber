@@ -132,19 +132,19 @@ def main():
                 filter_stats["neg_uptime_dur"] += 1
                 uptime_dur = None
             
-            cluster = "Incubated Domain (>30d)"
-            if aging_time <= 1: cluster = "Direct Weaponization (<1d)"
-            elif aging_time <= 7: cluster = "Rapid Weaponization (1-7d)"
-            elif aging_time <= 30: cluster = "Early Incubation (7-30d)"
+            cluster = "Domaine en Incubation (>30j)"
+            if aging_time <= 1: cluster = "Militarisation Directe (<1j)"
+            elif aging_time <= 7: cluster = "Militarisation Rapide (1-7j)"
+            elif aging_time <= 30: cluster = "Incubation Précoce (7-30j)"
             
             # --- NOUVEAUX CLUSTERS ETENDUS ---
-            ext_cluster = "Mature Infrastructure (>1y)"
-            if aging_time <= 1: ext_cluster = "Direct Weaponization (<1d)"
-            elif aging_time <= 7: ext_cluster = "Rapid Weaponization (1-7d)"
-            elif aging_time <= 30: ext_cluster = "Early Incubation (7-30d)"
-            elif aging_time <= 90: ext_cluster = "Short Incubation (1-3m)"
-            elif aging_time <= 180: ext_cluster = "Extended Incubation (3-6m)"
-            elif aging_time <= 365: ext_cluster = "Long Incubation (6-12m)"
+            ext_cluster = "Infrastructure Mature (>1an)"
+            if aging_time <= 1: ext_cluster = "Militarisation Directe (<1j)"
+            elif aging_time <= 7: ext_cluster = "Militarisation Rapide (1-7j)"
+            elif aging_time <= 30: ext_cluster = "Incubation Précoce (7-30j)"
+            elif aging_time <= 90: ext_cluster = "Incubation Courte (1-3 mois)"
+            elif aging_time <= 180: ext_cluster = "Incubation Prolongée (3-6 mois)"
+            elif aging_time <= 365: ext_cluster = "Incubation Longue (6-12 mois)"
 
             rd = rec.get("rd", "unknown")
             tld = get_tld(rd)
@@ -260,11 +260,11 @@ def main():
     # ---------------------------------------------------------
     # PRÉPARATION GLOBALE DES COLONNES POUR LES GRAPHIQUES
     # ---------------------------------------------------------
-    df["aging_cluster"] = pd.Categorical(df["aging_cluster"], categories=["Direct Weaponization (<1d)", "Rapid Weaponization (1-7d)", "Early Incubation (7-30d)", "Incubated Domain (>30d)"], ordered=True)
-    df["strat_group"] = df["aging_cluster"].apply(lambda x: "Incubation" if "Incubated Domain (>30d)" in str(x) else "Direct Weaponization")
+    df["aging_cluster"] = pd.Categorical(df["aging_cluster"], categories=["Militarisation Directe (<1j)", "Militarisation Rapide (1-7j)", "Incubation Précoce (7-30j)", "Domaine en Incubation (>30j)"], ordered=True)
+    df["strat_group"] = df["aging_cluster"].apply(lambda x: "Incubation" if "Domaine en Incubation (>30j)" in str(x) else "Militarisation Directe")
     
     # Ajout de l'ordre pour les nouveaux clusters
-    extended_cats = ["Direct Weaponization (<1d)", "Rapid Weaponization (1-7d)", "Early Incubation (7-30d)", "Short Incubation (1-3m)", "Extended Incubation (3-6m)", "Long Incubation (6-12m)", "Mature Infrastructure (>1y)"]
+    extended_cats = ["Militarisation Directe (<1j)", "Militarisation Rapide (1-7j)", "Incubation Précoce (7-30j)", "Incubation Courte (1-3 mois)", "Incubation Prolongée (3-6 mois)", "Incubation Longue (6-12 mois)", "Infrastructure Mature (>1an)"]
     df["extended_cluster"] = pd.Categorical(df["extended_cluster"], categories=extended_cats, ordered=True)
 
     df["registrar_name"] = df["iana_id"].map(registrar_map).fillna("ID: " + df["iana_id"].astype(str))
@@ -308,7 +308,7 @@ def main():
         plt.ylabel("Update Delay (days before attack)")
         plt.axhline(0, color='red', linestyle='--', alpha=0.5)
         plt.tight_layout()
-        plt.savefig(out_dir / "whois_update_vs_age.png", dpi=300)
+        plt.savefig(out_dir / "maj_whois_vs_age.png", dpi=300)
         plt.close()
 
     # 04. Délai de MAJ pour les 'Sleepers' (>180j)
@@ -320,7 +320,7 @@ def main():
         plt.xlabel("Update Delay (days before attack)")
         plt.ylabel("Number of domains")
         plt.xlim(0, 400)
-        plt.savefig(out_dir / "update_delay_incubation.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "dist_mises_a_jour_incubation.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # 05. Stratégies de Vieillissement selon le Top 15 Registrars (Noms réels)
@@ -334,7 +334,7 @@ def main():
     plt.ylabel("Aging Time (days, log scale)")
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
-    plt.savefig(out_dir / "aging_by_registrar.png", dpi=300, bbox_inches='tight')
+    plt.savefig(out_dir / "vieillissement_par_registrar.png", dpi=300, bbox_inches='tight')
     plt.close()
 
     # 06. Temps de Vieillissement par Marque Ciblée
@@ -352,7 +352,7 @@ def main():
         plt.xticks(rotation=45)
         plt.legend(["Median Age", "90th Percentile Age"])
         plt.tight_layout()
-        plt.savefig(out_dir / "aging_by_brand.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "vieillissement_par_marque.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # 07. Évolution Annuelle de l'Âge Médian
@@ -369,7 +369,7 @@ def main():
         min_year = int(yearly_median["year"].min())
         max_year = int(yearly_median["year"].max())
         plt.xticks(range(min_year, max_year + 1))
-        plt.savefig(out_dir / "annual_median_age_trend.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "tendance_age_median_annuel.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # 08. Frise Pré-Militarisation
@@ -390,7 +390,7 @@ def main():
         plt.title("Chronological Timeline of Pre-Weaponization Mutations")
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
-        plt.savefig(out_dir / "pre_weaponization_timeline.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "frise_pre_militarisation.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # 09. Classification des Stratégies
@@ -401,7 +401,7 @@ def main():
     plt.ylabel("Number of Domains")
     for p in ax.patches:
         ax.annotate(f"{int(p.get_height())}", (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='bottom')
-    plt.savefig(out_dir / "aging_strategy_clusters.png", dpi=300, bbox_inches='tight')
+    plt.savefig(out_dir / "clusters_strategies_vieillissement.png", dpi=300, bbox_inches='tight')
     plt.close()
 
     # 10. Espérance de Vie Opérationnelle (Survie) vs Âge (Carte de Densité Hexbin)
@@ -414,7 +414,7 @@ def main():
         plt.xlabel("Aging Time (days)")
         plt.ylabel("Post-Attack Survival Duration (Uptime) (hours)")
         plt.tight_layout()
-        plt.savefig(out_dir / "survival_vs_age.png", dpi=300)
+        plt.savefig(out_dir / "survie_vs_age.png", dpi=300)
         plt.close()
 
     # 11. Distribution de l'Écart avant Expiration
@@ -427,7 +427,7 @@ def main():
         plt.ylabel("Number of domains")
         plt.xlim(-50, 750)
         plt.axvline(0, color='r', linestyle='--')
-        plt.savefig(out_dir / "expiration_gap_dist.png", dpi=300, bbox_inches='tight')
+        plt.savefig(out_dir / "ecart_expiration_dist.png", dpi=300, bbox_inches='tight')
         plt.close()
         
     # 12. Tempo Opérationnel - Jour de l'Attaque (Weekend Gap)
@@ -438,9 +438,12 @@ def main():
     plt.xlabel("Day of the week (Discovery)")
     plt.ylabel("Number of attacks")
     plt.xticks(rotation=45)
-    plt.legend(title="Strategy (Weaponization vs Incubation)")
+    # Remplacement des labels français de la légende de seaborn par de l'anglais
+    handles, labels = ax.get_legend_handles_labels()
+    new_labels = ["Incubation" if l == "Incubation" else "Direct Weaponization" for l in labels]
+    plt.legend(handles, new_labels, title="Strategy")
     plt.tight_layout()
-    plt.savefig(out_dir / "weekend_gap_analysis.png", dpi=300)
+    plt.savefig(out_dir / "analyse_weekend_gap.png", dpi=300)
     plt.close()
 
     # 13. Crédibilité Lexicale - Longueur du Nom vs Âge
@@ -453,44 +456,44 @@ def main():
     plt.ylabel("Incubation Time (days, log scale)")
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
-    plt.savefig(out_dir / "domain_length_vs_age.png", dpi=300)
+    plt.savefig(out_dir / "longueur_domaine_vs_age.png", dpi=300)
     plt.close()
 
-# 14. Stratégie Extensions - Proportion Militarisation vs Incubation (Trié)
+    # 14. Stratégie Extensions - Proportion Militarisation vs Incubation (Trié)
     top_tlds = df["tld"].value_counts().nlargest(10).index.tolist()
     if len(top_tlds) > 0:
         plt.figure(figsize=(12, 7))
-        tld_dist = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
+        tld_dist_fixed = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
+        tld_dist_pct_fixed = tld_dist_fixed.div(tld_dist_fixed.sum(axis=1), axis=0) * 100
         
-        # TRI : On utilise le nouveau nom "Direct Weaponization"
-        if "Direct Weaponization" in tld_dist.columns:
-            tld_dist = tld_dist.sort_values(by="Direct Weaponization", ascending=False)
+        if "Militarisation Directe" in tld_dist_pct_fixed.columns:
+            tld_dist_pct_fixed = tld_dist_pct_fixed.sort_values(by="Militarisation Directe", ascending=False)
             
-        tld_dist_pct = tld_dist.div(tld_dist.sum(axis=1), axis=0) * 100
-        
-        # COULEURS : Bleu (#3498db) pour Direct, Rouge (#e74c3c) pour Incubation
-        # L'ordre dans 'color' doit suivre l'ordre alphabétique des colonnes du DF (D puis I)
-        tld_dist_pct.plot(kind="bar", stacked=True, color=["#3498db", "#e74c3c"], figsize=(12, 7))
-        
+        tld_dist_pct_fixed.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
         plt.title("Strategy Distribution by TLD")
         plt.ylabel("Percentage (%)")
         plt.xlabel("TLD (Top 10)")
         plt.axhline(50, color="gray", linestyle="--", alpha=0.5)
-        plt.legend(title="Strategy", labels=["Direct Weaponization", "Incubation"])
+        # On force la traduction de la légende ici sans toucher aux données
+        plt.legend(["Incubation", "Direct Weaponization"], title="Strategy")
         plt.tight_layout()
-        plt.savefig(out_dir / "strategic_ratio_tld.png", dpi=300)
+        plt.savefig(out_dir / "ratio_strategique_tld.png", dpi=300)
         plt.close()
 
     # 15. Saisonnalité - Volume Mensuel des Attaques
     plt.figure(figsize=(10, 6))
     monthly_data = df.groupby(["month", "strat_group"]).size().reset_index(name="count")
-    sns.lineplot(data=monthly_data, x="month", y="count", hue="strat_group", marker="o", linewidth=2.5)
+    ax = sns.lineplot(data=monthly_data, x="month", y="count", hue="strat_group", marker="o", linewidth=2.5)
     plt.title("Monthly Attack Seasonality")
     plt.xlabel("Month of the year")
     plt.ylabel("Number of attacks")
     plt.xticks(range(1, 13))
+    # Traduction de la légende
+    handles, labels = ax.get_legend_handles_labels()
+    new_labels = ["Incubation" if l == "Incubation" else "Direct Weaponization" for l in labels]
+    plt.legend(handles, new_labels, title="Strategy")
     plt.tight_layout()
-    plt.savefig(out_dir / "monthly_seasonality.png", dpi=300)
+    plt.savefig(out_dir / "saisonnalite_mensuelle.png", dpi=300)
     plt.close()
 
     # 16. ROI de l'Incubation - Survie Médiane post-attaque
@@ -502,32 +505,29 @@ def main():
         plt.ylabel("Median Survival Duration (Hours)")
         plt.xlabel("Strategic Age Cluster")
         plt.tight_layout()
-        plt.savefig(out_dir / "roi_incubation_survival.png", dpi=300)
+        plt.savefig(out_dir / "roi_incubation_survie.png", dpi=300)
         plt.close()
     
-# 17. Ratio Stratégique des Registrars (Spécialisation)
+    # 17. Ratio Stratégique des Registrars (Spécialisation)
     top_10_regs = df[df["iana_id"] != "None"]["registrar_name"].value_counts().nlargest(10).index.tolist()
     if len(top_10_regs) > 0:
         plt.figure(figsize=(12, 7))
         reg_dist = df[df["registrar_name"].isin(top_10_regs)].groupby(["registrar_name", "strat_group"]).size().unstack().fillna(0)
-        
-        # Correction du nom de la colonne pour le tri
-        if "Direct Weaponization" in reg_dist.columns:
-            reg_dist = reg_dist.sort_values(by="Direct Weaponization", ascending=False)
-            
         reg_dist_pct = reg_dist.div(reg_dist.sum(axis=1), axis=0) * 100
         
-        # Couleurs fixes : Bleu pour Direct, Rouge pour Incubation
-        reg_dist_pct.plot(kind="bar", stacked=True, color=["#3498db", "#e74c3c"], figsize=(12, 7))
-        
+        if "Militarisation Directe" in reg_dist_pct.columns:
+            reg_dist_pct = reg_dist_pct.sort_values(by="Militarisation Directe", ascending=False)
+            
+        reg_dist_pct.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
         plt.title("Strategic Specialization of Registrars")
         plt.ylabel("Percentage (%)")
         plt.xlabel("Registrar (Top 10)")
         plt.axhline(50, color="gray", linestyle="--", alpha=0.5)
-        plt.legend(title="Strategy", labels=["Direct Weaponization", "Incubation"])
+        # On force la traduction de la légende
+        plt.legend(["Incubation", "Direct Weaponization"], title="Strategy")
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
-        plt.savefig(out_dir / "strategic_ratio_registrars.png", dpi=300)
+        plt.savefig(out_dir / "ratio_strategique_registrars.png", dpi=300)
         plt.close()
 
     # 18. Complexité d'Infrastructure (Boxplot IPs)
@@ -538,7 +538,7 @@ def main():
     plt.xlabel("Strategic Age Cluster")
     plt.ylabel("Number of DNS changes (Unique IPs)")
     plt.tight_layout()
-    plt.savefig(out_dir / "infrastructure_complexity_ips.png", dpi=300)
+    plt.savefig(out_dir / "complexite_infrastructure_ips.png", dpi=300)
     plt.close()
 
     # 19. La preuve du Drop Catching (Pie Chart)
@@ -555,7 +555,7 @@ def main():
         plt.figure(figsize=(8, 8))
         plt.pie(counts, labels=counts.index, autopct='%1.1f%%', startangle=140, colors=["#95a5a6", "#e74c3c", "#3498db"])
         plt.title("Evidence of Drop Catching (Domains > 1 year)")
-        plt.savefig(out_dir / "evidence_drop_catching.png", dpi=300)
+        plt.savefig(out_dir / "preuve_drop_catching.png", dpi=300)
         plt.close()
 
     # 20. Évolution Temporelle Mensuelle Globale 
@@ -569,7 +569,7 @@ def main():
     plt.ylabel("Median Aging Time (days)")
     plt.xticks(rotation=90, fontsize=8) 
     plt.tight_layout()
-    plt.savefig(out_dir / "global_monthly_age_trend.png", dpi=300)
+    plt.savefig(out_dir / "tendance_age_mensuelle_globale.png", dpi=300)
     plt.close()
 
     # 21. Évolution Mensuelle Fractionnée par Année
@@ -596,7 +596,7 @@ def main():
     plt.ylabel("Number of domains")
     plt.legend(title="Age Categories", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
-    plt.savefig(out_dir / "annual_aging_strategies.png", dpi=300)
+    plt.savefig(out_dir / "strategies_vieillissement_annuel.png", dpi=300)
     plt.close()
 
     # 23 : Preuve du "Burn After Use" (Écart avant expiration par Stratégie)
@@ -605,23 +605,26 @@ def main():
     df_exp_zoom = df_exp[(df_exp["expiration_gap"] >= -50) & (df_exp["expiration_gap"] <= 400)]
     if not df_exp_zoom.empty:
         plt.figure(figsize=(10, 6))
-        sns.kdeplot(data=df_exp_zoom, x="expiration_gap", hue="strat_group", common_norm=False, fill=True, palette="Set1")
+        ax = sns.kdeplot(data=df_exp_zoom, x="expiration_gap", hue="strat_group", common_norm=False, fill=True, palette="Set1")
         plt.title("Evidence of Late Weaponization (Density)")
         plt.xlabel("Days Remaining before Expiration (during attack)")
         plt.ylabel("Distribution density")
         plt.axvline(0, color='red', linestyle='--', alpha=0.8, label='Expiration (0d)')
         plt.axvline(365, color='blue', linestyle='--', alpha=0.8, label='1 Year of validity (365d)')
+        # On override la légende de seaborn pour afficher en anglais
+        handles, labels = ax.get_legend_handles_labels()
+        new_labels = ["Incubation" if l == "Incubation" else "Direct Weaponization" if l == "Militarisation Directe" else l for l in labels]
+        plt.legend(handles, new_labels)
         plt.tight_layout()
-        plt.savefig(out_dir / "late_weaponization_density.png", dpi=300)
+        plt.savefig(out_dir / "militarisation_tardive_densite.png", dpi=300)
         plt.close()
 
-    # Preuve de la Militarisation Tardive
+    # Preuve de la Militarisation Tardive 
     if not df_exp_zoom.empty:
         # Ajout de sharex=False pour forcer l'affichage de l'axe des abscisses en haut
         fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=False)
         
-        # Étages du haut : Militarisation Directe
-        sns.histplot(data=df_exp_zoom[df_exp_zoom["strat_group"] == "Direct Weaponization"], 
+        sns.histplot(data=df_exp_zoom[df_exp_zoom["strat_group"] == "Militarisation Directe"], 
                      x="expiration_gap", color="#e74c3c", bins=50, kde=True, ax=axes[0])
         axes[0].set_title("Comparison: Direct Weaponization (Immediate Attack)")
         axes[0].set_ylabel("Number of domains")
@@ -630,7 +633,6 @@ def main():
         axes[0].set_xlim(-50, 400)
         axes[0].legend()
         
-        # Étage du bas : Incubation
         sns.histplot(data=df_exp_zoom[df_exp_zoom["strat_group"] == "Incubation"], 
                      x="expiration_gap", color="#3498db", bins=50, kde=True, ax=axes[1])
         axes[1].set_title("Comparison: Late Weaponization (Incubation)")
@@ -641,7 +643,7 @@ def main():
         axes[1].legend()
         
         plt.tight_layout()
-        plt.savefig(out_dir / "late_weaponization_comparison.png", dpi=300)
+        plt.savefig(out_dir / "militarisation_tardive_comparaison.png", dpi=300)
         plt.close()
 
     # 27 : Volume d'Attaques par Trimestre (Introduction)
@@ -653,7 +655,7 @@ def main():
     plt.ylabel("Number of Malicious Domains Discovered")
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(out_dir / "quarterly_attack_volume.png", dpi=300)
+    plt.savefig(out_dir / "volume_attaques_trimestriel.png", dpi=300)
     plt.close()
 
     # 28 : Résistance aux Takedowns selon l'Âge du Domaine (Survie Old vs New)
@@ -668,7 +670,7 @@ def main():
         plt.ylabel("Survival Duration before Takedown (Hours, log scale)")
         plt.xticks(rotation=45)
         plt.tight_layout()
-        plt.savefig(out_dir / "takedown_resistance_by_age.png", dpi=300)
+        plt.savefig(out_dir / "resistance_takedown_par_age.png", dpi=300)
         plt.close()
 
     print(f"[*] Tous les graphiques ont été générés avec succès dans {out_dir}")
