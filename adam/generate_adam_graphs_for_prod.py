@@ -456,20 +456,27 @@ def main():
     plt.savefig(out_dir / "domain_length_vs_age.png", dpi=300)
     plt.close()
 
-    # 14. Stratégie Extensions - Proportion Militarisation vs Incubation (Trié)
+# 14. Stratégie Extensions - Proportion Militarisation vs Incubation (Trié)
     top_tlds = df["tld"].value_counts().nlargest(10).index.tolist()
     if len(top_tlds) > 0:
         plt.figure(figsize=(12, 7))
-        tld_dist_fixed = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
-        tld_dist_pct_fixed = tld_dist_fixed.div(tld_dist_fixed.sum(axis=1), axis=0) * 100
-        if "Militarisation Directe" in tld_dist_pct_fixed.columns:
-            tld_dist_pct_fixed = tld_dist_pct_fixed.sort_values(by="Direct Weaponization", ascending=False)
-        tld_dist_pct_fixed.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
+        tld_dist = df[df["tld"].isin(top_tlds)].groupby(["tld", "strat_group"]).size().unstack().fillna(0)
+        
+        # TRI : On utilise le nouveau nom "Direct Weaponization"
+        if "Direct Weaponization" in tld_dist.columns:
+            tld_dist = tld_dist.sort_values(by="Direct Weaponization", ascending=False)
+            
+        tld_dist_pct = tld_dist.div(tld_dist.sum(axis=1), axis=0) * 100
+        
+        # COULEURS : Bleu (#3498db) pour Direct, Rouge (#e74c3c) pour Incubation
+        # L'ordre dans 'color' doit suivre l'ordre alphabétique des colonnes du DF (D puis I)
+        tld_dist_pct.plot(kind="bar", stacked=True, color=["#3498db", "#e74c3c"], figsize=(12, 7))
+        
         plt.title("Strategy Distribution by TLD")
         plt.ylabel("Percentage (%)")
         plt.xlabel("TLD (Top 10)")
         plt.axhline(50, color="gray", linestyle="--", alpha=0.5)
-        plt.legend(title="Strategy (Weaponization vs Incubation)")
+        plt.legend(title="Strategy", labels=["Direct Weaponization", "Incubation"])
         plt.tight_layout()
         plt.savefig(out_dir / "strategic_ratio_tld.png", dpi=300)
         plt.close()
@@ -498,20 +505,26 @@ def main():
         plt.savefig(out_dir / "roi_incubation_survival.png", dpi=300)
         plt.close()
     
-    # 17. Ratio Stratégique des Registrars (Spécialisation)
+# 17. Ratio Stratégique des Registrars (Spécialisation)
     top_10_regs = df[df["iana_id"] != "None"]["registrar_name"].value_counts().nlargest(10).index.tolist()
     if len(top_10_regs) > 0:
         plt.figure(figsize=(12, 7))
         reg_dist = df[df["registrar_name"].isin(top_10_regs)].groupby(["registrar_name", "strat_group"]).size().unstack().fillna(0)
+        
+        # Correction du nom de la colonne pour le tri
+        if "Direct Weaponization" in reg_dist.columns:
+            reg_dist = reg_dist.sort_values(by="Direct Weaponization", ascending=False)
+            
         reg_dist_pct = reg_dist.div(reg_dist.sum(axis=1), axis=0) * 100
-        if "Direct Weaponization" in reg_dist_pct.columns:
-            reg_dist_pct = reg_dist_pct.sort_values(by="Direct Weaponization", ascending=False)
-        reg_dist_pct.plot(kind="bar", stacked=True, color=["#e74c3c", "#3498db"], figsize=(12, 7))
+        
+        # Couleurs fixes : Bleu pour Direct, Rouge pour Incubation
+        reg_dist_pct.plot(kind="bar", stacked=True, color=["#3498db", "#e74c3c"], figsize=(12, 7))
+        
         plt.title("Strategic Specialization of Registrars")
         plt.ylabel("Percentage (%)")
         plt.xlabel("Registrar (Top 10)")
         plt.axhline(50, color="gray", linestyle="--", alpha=0.5)
-        plt.legend(title="Strategy (Weaponization vs Incubation)")
+        plt.legend(title="Strategy", labels=["Direct Weaponization", "Incubation"])
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
         plt.savefig(out_dir / "strategic_ratio_registrars.png", dpi=300)
